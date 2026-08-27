@@ -1,0 +1,3 @@
+# O deploy é em Linux. Forçar LF evita surpresas em qualquer arquivo
+# interpretado no servidor.
+* text=auto eol=lf
