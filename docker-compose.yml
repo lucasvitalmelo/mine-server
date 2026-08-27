@@ -55,7 +55,24 @@ services:
       OVERRIDE_SERVER_PROPERTIES: "TRUE"
 
       # --- Acesso --------------------------------------------------------
-      ONLINE_MODE: "TRUE"
+      # FALSE = aceita clientes sem conta Microsoft/Mojang (pirata).
+      #
+      # O QUE ISSO CUSTA: sem autenticação, o servidor aceita QUALQUER nome
+      # que o cliente digitar. Alguém pode entrar usando o seu nick. Se esse
+      # nick for op, a pessoa entra como op — e op apaga o mundo, banha todos
+      # e muda a config. A whitelist tambem deixa de proteger: ela compara
+      # nome, e o nome é exatamente o que passou a ser falsificável.
+      #
+      # MITIGAÇÕES OBRIGATÓRIAS quando isto é FALSE (ver README):
+      #   1. NAO preencher MC_OPS — dar op por RCON, com a pessoa online
+      #   2. Manter MC_ENABLE_WHITELIST=TRUE
+      #   3. Trocar MC_PORT para uma porta fora da 25565 (foge de scanners)
+      #   4. Instalar plugin de login (AuthMe/nLogin) — é o que devolve
+      #      autenticacao de verdade, por senha
+      ONLINE_MODE: "${MC_ONLINE_MODE:-FALSE}"
+
+      # Com ONLINE_MODE=FALSE, deixe VAZIO. Um op pré-definido por nome é
+      # uma conta de administrador com senha em branco na internet.
       OPS: "${MC_OPS:-}"
       ENABLE_WHITELIST: "${MC_ENABLE_WHITELIST:-FALSE}"
       WHITELIST: "${MC_WHITELIST:-}"

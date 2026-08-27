@@ -238,12 +238,63 @@ sem nada no log do jogo.
 
 ## Segurança
 
-- `ONLINE_MODE=TRUE` — só contas Microsoft/Mojang legítimas. Não desligue.
 - A porta do RCON (25575) **não** é exposta ao host, de propósito. Administração
   só de dentro do VPS.
-- Se você divulgar o IP em Discord ou fórum, ligue a whitelist:
-  `MC_ENABLE_WHITELIST=TRUE` e liste as contas em `MC_WHITELIST`.
 - `.env` está no `.gitignore`. Não comite a senha do RCON.
+
+### Este servidor roda com `MC_ONLINE_MODE=FALSE`
+
+Ou seja, aceita clientes sem conta Microsoft/Mojang. Isso é uma escolha
+deliberada, e ela tem uma consequência técnica concreta que precisa ser
+compensada.
+
+**Sem autenticação, o servidor aceita qualquer nome que o cliente digitar.** Não
+existe verificação. Se você digitar o nick de outra pessoa, você *é* aquela
+pessoa para o servidor. Consequências em ordem de gravidade:
+
+1. **Qualquer um pode entrar como op.** Se um nick com op for conhecido, basta
+   digitá-lo. Op tem `/ban`, `/op`, acesso a comandos de mundo e a todo
+   inventário. O mundo inteiro fica à mercê de quem descobrir o nome.
+2. **A whitelist deixa de ser barreira real.** Ela compara nome, e nome passou a
+   ser falsificável. Continua útil contra tráfego automatizado, não contra
+   alguém que saiba o nick de um jogador.
+3. **Skins não funcionam.** A Mojang não serve skin para sessão não
+   autenticada. O plugin `SkinsRestorer` resolve.
+
+**As quatro mitigações — trate como parte da configuração, não como conselho:**
+
+| # | Ação | Por quê |
+|---|---|---|
+| 1 | `MC_OPS` **vazio** | Op pré-definido por nome = conta de admin sem senha na internet. Dê op por RCON, com a pessoa online |
+| 2 | `MC_ENABLE_WHITELIST=TRUE` | Barra scanner e curioso que só tem o IP |
+| 3 | `MC_PORT` fora da 25565 | Scanners procuram a porta padrão. Não é segurança, é redução de ruído |
+| 4 | Plugin de login (`AuthMe`, `nLogin`) | **A correção de verdade** |
+
+Dar op com segurança:
+
+```bash
+docker exec $(docker ps -qf name=minecraft) rcon-cli op SeuNick
+```
+
+### Plugin de login: o que devolve a autenticação
+
+`ONLINE_MODE=FALSE` remove a checagem de identidade. Um plugin de login a
+devolve, por senha dentro do jogo: no primeiro acesso o jogador usa `/register`,
+nos seguintes `/login`. Quem digitar um nick já registrado sem saber a senha
+fica travado e não interage com o mundo.
+
+É isto que torna um servidor offline-mode administrável de verdade — e é também
+a resposta para "tem senha para entrar?": com este plugin, tem.
+
+```bash
+CID=$(docker ps -qf name=minecraft)
+docker cp AuthMeReloaded.jar $CID:/data/plugins/
+docker restart $CID
+```
+
+Baixe o `.jar` compatível com a sua versão do Paper no site oficial do plugin.
+**Registre a sua conta e se dê op imediatamente após instalar**, antes de passar
+o IP para qualquer pessoa.
 
 ---
 

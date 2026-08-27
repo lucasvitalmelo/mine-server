@@ -124,7 +124,30 @@ trata SIGTERM corretamente — só precisa de tempo.
 
 ## Segurança
 
-- `ONLINE_MODE=TRUE` — somente contas Mojang/Microsoft legítimas.
+**Mudança de requisito (2026-08-27):** o usuário pediu explicitamente que o
+servidor aceite clientes sem conta legítima. `ONLINE_MODE` passa a `FALSE`.
+A recomendação original era `TRUE`; a decisão foi reafirmada após a exposição
+do trade-off e está registrada aqui como escolha consciente.
+
+O custo não é de licenciamento, é de controle de acesso: sem autenticação, o
+servidor aceita qualquer nome que o cliente informe. Um op identificado por
+nome torna-se uma conta administrativa sem senha exposta na internet, e a
+whitelist deixa de ser barreira real porque compara justamente o campo que
+passou a ser falsificável.
+
+Compensações incorporadas à configuração, não deixadas como conselho:
+
+| Mitigação | Efeito |
+|---|---|
+| `MC_OPS` vazio, op só por RCON com o jogador online | Elimina o alvo de impersonação privilegiada |
+| `MC_ENABLE_WHITELIST=TRUE` (default invertido) | Barra tráfego automatizado; não barra quem sabe um nick |
+| `MC_PORT` fora da 25565 (recomendado) | Redução de ruído de scanner, não segurança |
+| Plugin de login (AuthMe/nLogin) | **Única mitigação que restaura autenticação de fato**, por senha in-game |
+
+O plugin de login é também a resposta à pergunta "tem senha para entrar?" —
+sem ele, não há nenhuma forma de identidade verificável neste servidor.
+
+- `ONLINE_MODE=FALSE` — aceita clientes não autenticados (ver acima).
 - RCON **habilitado, porta não exposta**. Administração via `docker exec` no
   host. RCON aberto na internet é vetor de invasão direto.
 - `RCON_PASSWORD` obrigatória via env, sem default. O compose falha alto se
