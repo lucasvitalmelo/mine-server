@@ -48,6 +48,12 @@ services:
       MODE: "${MC_MODE:-survival}"
       MOTD: "${MC_MOTD:-Servidor Paper}"
       LEVEL: "${MC_LEVEL:-world}"
+
+      # Semente do mundo. SÓ TEM EFEITO NA GERAÇÃO DO MUNDO — se o mundo em
+      # LEVEL já existe, é ignorada em silêncio. Para trocar de semente,
+      # aponte LEVEL para um nome novo (ex: world2) ou apague /data/world.
+      # Vazio = semente aleatória.
+      SEED: "${MC_SEED:-}"
       SPAWN_PROTECTION: "${MC_SPAWN_PROTECTION:-0}"
 
       # Reaplica as variáveis acima no server.properties a cada restart.
