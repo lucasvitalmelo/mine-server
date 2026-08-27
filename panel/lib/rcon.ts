@@ -11,7 +11,37 @@ const password = process.env.RCON_PASSWORD;
  * algumas vezes por dia. Um pool traria conexões mortas depois de um redeploy
  * do servidor de jogo, em troca de latência que ninguém percebe aqui.
  */
+/**
+ * Respostas simuladas para ver a interface sem um servidor de jogo por perto.
+ *
+ * A porta do RCON nao e publicada no host, entao uma maquina de fora nao
+ * alcanca o servidor real. Mesma trava dupla do bypass do middleware: exige
+ * NODE_ENV diferente de production, o que a imagem de producao fixa.
+ */
+const fakeRcon =
+  process.env.NODE_ENV !== 'production' && process.env.PANEL_DEV_FAKE_RCON === 'true';
+
+function fakeResposta(command: string): string {
+  const cmd = command.trim().toLowerCase();
+  if (cmd === 'list')
+    return 'There are 2 of a max of 10 players online: LucasVital, AmigoDaLive';
+  if (cmd === 'whitelist list')
+    return 'There are 3 whitelisted players: LucasVital, AmigoDaLive, OutroAmigo';
+  if (cmd === 'tps') return 'TPS from last 1m, 5m, 15m: 19.87, 19.94, 20.0';
+  if (cmd === 'save-all') return 'Saved the game';
+  if (cmd === 'seed') return 'Seed: [-4172144997902289642]';
+  if (cmd.startsWith('whitelist add')) return `Added ${command.split(' ').pop()} to the whitelist`;
+  if (cmd.startsWith('whitelist remove')) return `Removed ${command.split(' ').pop()} from the whitelist`;
+  if (cmd.startsWith('whitelist on')) return 'Whitelist is now turned on';
+  if (cmd.startsWith('whitelist off')) return 'Whitelist is now turned off';
+  if (cmd.startsWith('kick')) return `Kicked ${command.split(' ')[1]}`;
+  if (cmd.startsWith('say')) return '';
+  return `[simulado] ${command}`;
+}
+
 export async function rcon(command: string): Promise<string> {
+  if (fakeRcon) return fakeResposta(command);
+
   if (!password) throw new Error('RCON_PASSWORD não está definida no painel.');
 
   const client = await Rcon.connect({ host, port, password, timeout: 5000 });

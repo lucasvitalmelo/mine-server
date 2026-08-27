@@ -320,7 +320,7 @@ alcançaria nada.
 |---|---|
 | Application name | `Painel Minecraft` |
 | Session duration | 24 horas |
-| Subdomain / Domain | `painel` / `inkttoo.com` |
+| Subdomain / Domain | `painel` / `seudominio.com` |
 
 Na política, use **Emails** e liste quem pode entrar. Um e-mail por pessoa.
 
@@ -337,7 +337,7 @@ problema. Só o registro do jogo precisa ficar cinza.
 ### Passo 3 — Variáveis no Coolify
 
 ```
-PANEL_FQDN=https://painel.inkttoo.com
+PANEL_FQDN=https://painel.seudominio.com
 CF_ACCESS_TEAM_DOMAIN=sua-org.cloudflareaccess.com
 CF_ACCESS_AUD=<o AUD tag do passo 1>
 ```
@@ -360,7 +360,7 @@ fechada.
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}
-" -H "Host: painel.inkttoo.com" http://IP_DO_VPS/
+" -H "Host: painel.seudominio.com" http://IP_DO_VPS/
 ```
 
 Esperado: **403**. Se vier `200`, o guard não está ativo — confira se

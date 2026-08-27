@@ -25,7 +25,20 @@ function deny(motivo: string) {
   });
 }
 
+/**
+ * Bypass para desenvolvimento local.
+ *
+ * Travado em duas condicoes que precisam ser verdadeiras ao mesmo tempo. A
+ * imagem de producao roda com NODE_ENV=production fixo no Dockerfile, entao
+ * este bypass e inalcancavel em producao mesmo que a variavel escape para o
+ * Coolify por acidente.
+ */
+const devBypass =
+  process.env.NODE_ENV !== 'production' && process.env.PANEL_DEV_BYPASS === 'true';
+
 export async function middleware(req: NextRequest) {
+  if (devBypass) return NextResponse.next();
+
   if (!teamDomain || !audience || !jwks) {
     return deny(
       'O painel subiu sem CF_ACCESS_TEAM_DOMAIN ou CF_ACCESS_AUD. ' +
