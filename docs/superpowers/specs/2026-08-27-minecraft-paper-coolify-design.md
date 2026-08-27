@@ -71,11 +71,28 @@ Minecraft é TCP bruto e não passa por roteador HTTP. Consequências de design:
 
 - Mapeamento de porta explícito no compose: `${MC_PORT:-25565}:25565`.
 - Campo de domínio **vazio** no Coolify. Preenchê-lo não ajuda e confunde.
-- Porta liberada no firewall do VPS: `ufw allow 25565/tcp`.
+- Porta liberada no **firewall do painel do provedor**. `ufw` no VPS é inócuo
+  aqui: portas publicadas pelo Docker escrevem iptables na chain `DOCKER`, que
+  contorna o ufw. Diagnóstico correto de falha de conexão é `ss -tlnp | grep
+  25565`, não `ufw status`.
 - Conexão do cliente: `IP_DO_VPS:25565`.
 - Domínio bonito (opcional): registro DNS **A** de `mc.dominio.com` para o IP do
   VPS. Passa longe do Traefik. Se a porta sair de 25565, um registro `SRV`
   `_minecraft._tcp` remove a necessidade de digitar a porta.
+
+## Verificação obrigatória pós-deploy
+
+Limitar o uso é o requisito central, então ele precisa ser verificado, não
+presumido. O Coolify transforma o compose antes de rodar; se o bloco `deploy`
+for descartado, o container roda sem limite e parece saudável até sufocar o
+Coolify.
+
+```bash
+docker inspect $(docker ps -qf name=minecraft) --format 'mem={{.HostConfig.Memory}} cpu={{.HostConfig.NanoCpus}}'
+```
+
+Ambos diferentes de zero. Se `mem=0`, o fallback é trocar `deploy.resources` por
+`mem_limit` + `cpus` no nível do serviço — uma forma ou a outra, nunca as duas.
 
 ## Persistência
 
@@ -108,6 +125,11 @@ maior parte do dia.
 a pausa costuma expirar antes do servidor retomar, e o jogador precisa tentar de
 novo. Para um grupo de amigos que avisa antes de jogar, vale ligar. Fica
 documentado como opt-in em vez de imposto.
+
+Há um acoplamento a respeitar: o autopause é **incompatível com o healthcheck**
+enviado. O `mc-health` abre conexão na porta a cada 30s, o que o autopause lê
+como atividade — o servidor nunca pausa, ou acorda em loop. Ligar autopause
+exige comentar o bloco `healthcheck`. Isso está anotado nos dois arquivos.
 
 ## Fora de escopo
 

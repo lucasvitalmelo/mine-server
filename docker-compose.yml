@@ -59,12 +59,20 @@ services:
       # Administração via `docker exec` — ver README. RCON aberto na internet
       # é vetor de invasão direto.
       ENABLE_RCON: "TRUE"
+      # O `:?` faz o deploy falhar alto se a senha nao existir, em vez de
+      # subir com senha vazia. Se o Coolify recusar SALVAR o compose por
+      # causa disto (ele interpola na leitura, antes de voce preencher as env
+      # vars), preencha RCON_PASSWORD na aba Environment Variables primeiro —
+      # ou troque por "${RCON_PASSWORD}" simples.
       RCON_PASSWORD: "${RCON_PASSWORD:?defina RCON_PASSWORD nas variaveis de ambiente}"
 
       # --- Autopause (opt-in) --------------------------------------------
       # Suspende a JVM quando ninguém está online, devolvendo a CPU ao host.
       # Trade-off: a primeira conexão depois da pausa costuma expirar e o
       # jogador precisa tentar de novo.
+      # ATENÇÃO: ao ligar isto, COMENTE o bloco `healthcheck` abaixo. O
+      # mc-health abre conexão na porta a cada 30s, e o autopause interpreta
+      # isso como atividade — o servidor nunca pausa (ou acorda em loop).
       ENABLE_AUTOPAUSE: "${MC_ENABLE_AUTOPAUSE:-FALSE}"
       AUTOPAUSE_TIMEOUT_EST: "${MC_AUTOPAUSE_TIMEOUT:-1800}"
 
@@ -78,6 +86,10 @@ services:
     # do mundo no meio do flush e corrompe chunks.
     stop_grace_period: 60s
 
+    # O Compose v2 honra deploy.resources.limits fora do swarm, mas o Coolify
+    # transforma o compose antes de rodar. VERIFIQUE depois do deploy (ver
+    # README). Se os limites nao aplicarem, troque este bloco pelas chaves
+    # `mem_limit` e `cpus` no nivel do servico — uma OU outra, nunca as duas.
     deploy:
       resources:
         limits:

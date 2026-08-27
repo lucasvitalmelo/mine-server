@@ -50,17 +50,39 @@ nada.
 openssl rand -base64 24
 ```
 
-**5. Libere a porta no firewall do VPS:**
+**5. Libere a porta 25565/TCP no firewall do painel do provedor.**
 
-```bash
-sudo ufw allow 25565/tcp && sudo ufw status
-```
+Na Hostinger: VPS → Firewall → nova regra, TCP, porta 25565.
 
-Se o provedor tiver firewall próprio no painel (Hostinger tem), libere 25565/TCP
-lá também.
+Note que `ufw allow 25565/tcp` no VPS é, na prática, **inócuo**: portas
+publicadas pelo Docker escrevem regras de iptables na chain `DOCKER`, que
+contorna o ufw inteiro. A porta fica acessível independentemente do ufw. Rodar o
+comando não faz mal, mas se você não conseguir conectar, o problema **não** está
+ali — está no firewall do painel do provedor. Ver "Não consigo conectar" abaixo.
 
 **6. Deploy.** A primeira inicialização é lenta — baixa o Paper e gera o mundo.
 Espere de 2 a 5 minutos antes de tentar conectar.
+
+**7. Confirme que os limites de recurso realmente aplicaram.** Este passo não é
+opcional: limitar o uso é o ponto do exercício, e o Coolify transforma o compose
+antes de rodar — se o bloco `deploy` for descartado, você fica com um container
+sem limite nenhum, que parece saudável até sufocar o Coolify.
+
+```bash
+docker inspect $(docker ps -qf name=minecraft) --format 'mem={{.HostConfig.Memory}} cpu={{.HostConfig.NanoCpus}}'
+```
+
+Esperado: os dois valores **diferentes de zero** (ex: `mem=4294967296 cpu=1500000000`).
+
+Se vier `mem=0`, o bloco `deploy` não pegou. Edite o `docker-compose.yml`,
+remova o bloco `deploy` inteiro e coloque no lugar, no nível do serviço:
+
+```yaml
+    mem_limit: ${MC_MEM_LIMIT:-4G}
+    cpus: "${MC_CPU_LIMIT:-1.5}"
+```
+
+Uma forma **ou** a outra — as duas juntas dão conflito.
 
 ---
 
@@ -78,6 +100,23 @@ descubra qual subiu:
 ```bash
 docker logs $(docker ps -qf name=minecraft) 2>&1 | grep -i "version"
 ```
+
+### Não consigo conectar
+
+Um comando resolve a ambiguidade — rode no VPS:
+
+```bash
+ss -tlnp | grep 25565
+```
+
+- **Aparece algo escutando** → o container está no ar e bindado corretamente. O
+  bloqueio é externo: firewall do painel do provedor. Não perca tempo com ufw.
+- **Não aparece nada** → o container não subiu ou não publicou a porta.
+  Investigue com `docker ps -a` e `docker logs $(docker ps -aqf name=minecraft)`.
+
+Se estiver escutando e a porta liberada no painel, o próximo suspeito é
+incompatibilidade de versão do cliente — o erro no jogo diz qual versão o
+servidor espera.
 
 ### Domínio no lugar do IP (opcional)
 
@@ -140,12 +179,17 @@ docker stats $CID
 
 ```bash
 docker exec $CID rcon-cli save-all
-docker run --rm -v minecraft-data:/data -v $(pwd):/backup alpine \
+VOL=$(docker volume ls -q | grep minecraft-data) && echo "volume: $VOL"
+docker run --rm -v $VOL:/data -v $(pwd):/backup alpine \
   tar czf /backup/mundo-$(date +%F).tar.gz -C /data world
+tar tzf mundo-$(date +%F).tar.gz | head
 ```
 
-Confirme o nome real do volume com `docker volume ls | grep minecraft` — o
-Coolify prefixa volumes com o identificador do projeto.
+**Resolva o `$VOL` de verdade, não chute o nome.** O Coolify prefixa volumes com
+o identificador do projeto, e um `-v nome-errado:/data` **não dá erro** — o
+Docker cria um volume novo e vazio, e você recebe um `.tar.gz` de poucos bytes
+achando que tem backup. É para isso que serve o `tar tzf` no final: se ele não
+listar arquivos de `world/`, você não tem backup.
 
 **Plugins:** copie o `.jar` para `/data/plugins` e reinicie.
 
@@ -166,7 +210,7 @@ jogo (20.0 é o ideal; abaixo de 18 já dá pra sentir).
 | TPS baixo, CPU no teto | Baixe `MC_SIMULATION_DISTANCE` para 4, depois `MC_VIEW_DISTANCE` para 6 |
 | Container reiniciando sozinho | OOM-kill. Suba `MC_MEM_LIMIT` **ou** baixe `MC_MAX_MEMORY` — o heap precisa ficar em ~75% do limite |
 | Coolify lento durante o jogo | Baixe `MC_CPU_LIMIT` para 1.0 |
-| Servidor ocioso comendo CPU | Ligue `MC_ENABLE_AUTOPAUSE=TRUE` |
+| Servidor ocioso comendo CPU | Ligue `MC_ENABLE_AUTOPAUSE=TRUE` **e comente o bloco `healthcheck`** no compose — o `mc-health` sondando a porta a cada 30s impede a pausa |
 | Travadas ao explorar terreno novo | Normal em 2 vCPU (geração de chunk). Pré-gere o mundo com o plugin Chunky |
 
 Confirmar OOM-kill:
