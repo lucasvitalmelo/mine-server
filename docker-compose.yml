@@ -1,0 +1,96 @@
+services:
+  minecraft:
+    image: itzg/minecraft-server:java21
+    restart: unless-stopped
+
+    # O console do servidor precisa de TTY para aceitar comandos via
+    # `docker attach`. Sem isto, `mc-send-to-console` e o console interativo
+    # não funcionam.
+    tty: true
+    stdin_open: true
+
+    # Minecraft Java é TCP bruto, NÃO é HTTP — não passa pelo Traefik do
+    # Coolify. Deixe o campo de domínio VAZIO no Coolify e libere a porta
+    # no firewall do VPS: sudo ufw allow 25565/tcp
+    ports:
+      - "${MC_PORT:-25565}:25565"
+
+    environment:
+      # --- Obrigatório ---------------------------------------------------
+      EULA: "TRUE"
+      TYPE: "PAPER"
+      VERSION: "${MC_VERSION:-LATEST}"
+
+      # --- Memória -------------------------------------------------------
+      # MC_MAX_MEMORY deve ficar em ~75% de MC_MEM_LIMIT. Metaspace, buffers
+      # do Netty, threads e overhead de GC vivem FORA do heap e contam para o
+      # limite do cgroup. Heap igual ao limite = OOM-kill silencioso.
+      MAX_MEMORY: "${MC_MAX_MEMORY:-3G}"
+      USE_AIKAR_FLAGS: "TRUE"
+
+      # --- Alavancas de CPU (as que mais importam em 2 vCPU) --------------
+      VIEW_DISTANCE: "${MC_VIEW_DISTANCE:-7}"
+      SIMULATION_DISTANCE: "${MC_SIMULATION_DISTANCE:-5}"
+
+      # Desarma o watchdog. Em CPU limitada ele derruba o servidor em picos
+      # de tick que são legítimos (geração de chunk, save de mundo).
+      MAX_TICK_TIME: "-1"
+
+      # --- Gameplay ------------------------------------------------------
+      MAX_PLAYERS: "${MC_MAX_PLAYERS:-10}"
+      DIFFICULTY: "${MC_DIFFICULTY:-normal}"
+      MODE: "${MC_MODE:-survival}"
+      MOTD: "${MC_MOTD:-Servidor Paper}"
+      LEVEL: "${MC_LEVEL:-world}"
+      SPAWN_PROTECTION: "${MC_SPAWN_PROTECTION:-0}"
+
+      # Reaplica as variáveis acima no server.properties a cada restart.
+      # Sem isto, mudanças de env são ignoradas depois do primeiro boot.
+      OVERRIDE_SERVER_PROPERTIES: "TRUE"
+
+      # --- Acesso --------------------------------------------------------
+      ONLINE_MODE: "TRUE"
+      OPS: "${MC_OPS:-}"
+      ENABLE_WHITELIST: "${MC_ENABLE_WHITELIST:-FALSE}"
+      WHITELIST: "${MC_WHITELIST:-}"
+
+      # --- RCON ----------------------------------------------------------
+      # Habilitado, mas a porta 25575 NÃO é exposta ao host de propósito.
+      # Administração via `docker exec` — ver README. RCON aberto na internet
+      # é vetor de invasão direto.
+      ENABLE_RCON: "TRUE"
+      RCON_PASSWORD: "${RCON_PASSWORD:?defina RCON_PASSWORD nas variaveis de ambiente}"
+
+      # --- Autopause (opt-in) --------------------------------------------
+      # Suspende a JVM quando ninguém está online, devolvendo a CPU ao host.
+      # Trade-off: a primeira conexão depois da pausa costuma expirar e o
+      # jogador precisa tentar de novo.
+      ENABLE_AUTOPAUSE: "${MC_ENABLE_AUTOPAUSE:-FALSE}"
+      AUTOPAUSE_TIMEOUT_EST: "${MC_AUTOPAUSE_TIMEOUT:-1800}"
+
+      TZ: "${TZ:-America/Sao_Paulo}"
+
+    volumes:
+      # OBRIGATÓRIO. Sem volume, o próximo redeploy do Coolify apaga o mundo.
+      - minecraft-data:/data
+
+    # A janela default de 10s do Docker entre SIGTERM e SIGKILL corta o save
+    # do mundo no meio do flush e corrompe chunks.
+    stop_grace_period: 60s
+
+    deploy:
+      resources:
+        limits:
+          memory: ${MC_MEM_LIMIT:-4G}
+          cpus: "${MC_CPU_LIMIT:-1.5}"
+
+    healthcheck:
+      test: ["CMD", "mc-health"]
+      # A primeira inicialização baixa o Paper e gera o mundo — é lenta.
+      start_period: 5m
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  minecraft-data:

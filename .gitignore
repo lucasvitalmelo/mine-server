@@ -1,0 +1,7 @@
+# Segredos — nunca comitar
+.env
+.env.local
+
+# Dados do servidor, caso alguém rode local com bind mount
+/data/
+*.tar.gz

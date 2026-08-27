@@ -1,0 +1,134 @@
+# Servidor Minecraft Java (Paper) em VPS Coolify — KVM 2
+
+**Data:** 2026-08-27
+**Status:** Aprovado
+
+## Objetivo
+
+Subir um servidor Minecraft Java Edition para um grupo pequeno de amigos em um
+VPS Hostinger KVM 2 que já roda Coolify, sem sufocar o Coolify nem as outras
+aplicações hospedadas ali. O uso de recursos é requisito de primeira classe, não
+detalhe de ajuste fino.
+
+## Restrições
+
+- **Hardware:** 2 vCPU / 8 GB RAM / NVMe (a confirmar — ver "Premissas").
+- **Carga existente:** Coolify (Traefik + Postgres + Redis) ≈ 2 GB, mais 1–2
+  aplicações pequenas ≈ 1 GB. Orçamento disponível: ~5 GB.
+- **2 vCPU é a restrição dominante.** O tick loop do Paper é essencialmente
+  single-thread; CPU esgota antes da RAM.
+- **Entrega:** repositório Git com `docker-compose.yml`, consumido pelo Coolify
+  como recurso *Docker Compose*.
+
+## Premissas
+
+As especificações do VPS não foram confirmadas por medição no momento da
+escrita. Para que isso não bloqueie nada, **todos os limites são parametrizados
+por variável de ambiente** com defaults conservadores. Ajustar o orçamento é
+editar `.env` no Coolify e redeployar — nenhuma mudança de código.
+
+Comando de verificação, documentado no README:
+
+```bash
+nproc && free -h && df -h / && docker stats --no-stream
+```
+
+## Arquitetura
+
+Um único serviço Docker: `itzg/minecraft-server:java21` com `TYPE=PAPER`. É a
+imagem padrão de fato do ecossistema — configuração inteira por variáveis de
+ambiente, tratamento correto de SIGTERM, healthcheck embutido. Não há motivo
+para construir imagem própria.
+
+```
+Internet ──TCP 25565──> [firewall ufw] ──> [container minecraft] ──> volume /data
+                                                  │
+                        Traefik/Coolify ──X──  (não participa: MC não é HTTP)
+```
+
+## Decisões de dimensionamento
+
+| Parâmetro | Default | Justificativa |
+|---|---|---|
+| Limite de memória do container | `4G` | Deixa ~1 GB de folga sobre o orçamento de 5 GB |
+| Limite de CPU do container | `1.5` | Preserva meio core para Coolify e Traefik |
+| Heap da JVM (`MAX_MEMORY`) | `3G` | ≈75% do limite do container |
+| `USE_AIKAR_FLAGS` | `TRUE` | Flags de G1GC validadas pela comunidade |
+| `VIEW_DISTANCE` | `7` | Alavanca de CPU mais pesada que o heap neste hardware |
+| `SIMULATION_DISTANCE` | `5` | Idem |
+| `MAX_PLAYERS` | `10` | Escopo declarado: grupo de amigos |
+| `MAX_TICK_TIME` | `-1` | Desarma o watchdog; em CPU limitada ele mata o servidor em picos de tick legítimos |
+
+**O heap nunca pode igualar o limite do container.** Metaspace, buffers diretos
+do Netty, threads e overhead de GC vivem fora do heap e contam para o cgroup.
+Heap = limite produz OOM-kill em vez de GC pressure — o container morre em
+silêncio, sem stack trace.
+
+## Rede: por que não existe domínio
+
+O Coolify roteia todo recurso como HTTP através do Traefik. O protocolo Java do
+Minecraft é TCP bruto e não passa por roteador HTTP. Consequências de design:
+
+- Mapeamento de porta explícito no compose: `${MC_PORT:-25565}:25565`.
+- Campo de domínio **vazio** no Coolify. Preenchê-lo não ajuda e confunde.
+- Porta liberada no firewall do VPS: `ufw allow 25565/tcp`.
+- Conexão do cliente: `IP_DO_VPS:25565`.
+- Domínio bonito (opcional): registro DNS **A** de `mc.dominio.com` para o IP do
+  VPS. Passa longe do Traefik. Se a porta sair de 25565, um registro `SRV`
+  `_minecraft._tcp` remove a necessidade de digitar a porta.
+
+## Persistência
+
+Volume nomeado montado em `/data`.
+
+**Isto é requisito de funcionamento, não conveniência.** Sem volume, o próximo
+redeploy do Coolify recria o container e apaga o mundo.
+
+`stop_grace_period: 60s`. A janela default de 10s do Docker entre SIGTERM e
+SIGKILL corta o save do mundo no meio do flush, corrompendo chunks. A imagem
+trata SIGTERM corretamente — só precisa de tempo.
+
+## Segurança
+
+- `ONLINE_MODE=TRUE` — somente contas Mojang/Microsoft legítimas.
+- RCON **habilitado, porta não exposta**. Administração via `docker exec` no
+  host. RCON aberto na internet é vetor de invasão direto.
+- `RCON_PASSWORD` obrigatória via env, sem default. O compose falha alto se
+  estiver ausente em vez de subir com senha fraca.
+- Whitelist desligada por default, variáveis prontas para ligar
+  (`ENABLE_WHITELIST`, `WHITELIST`).
+
+## Economia opcional de recursos: autopause
+
+A imagem suporta `ENABLE_AUTOPAUSE`, que suspende o processo da JVM quando não
+há jogadores conectados — devolve praticamente toda a CPU ao host durante a
+maior parte do dia.
+
+**Default: desligado.** O trade-off é real: a primeira tentativa de conexão após
+a pausa costuma expirar antes do servidor retomar, e o jogador precisa tentar de
+novo. Para um grupo de amigos que avisa antes de jogar, vale ligar. Fica
+documentado como opt-in em vez de imposto.
+
+## Fora de escopo
+
+- **Backup automático do mundo** (sidecar `itzg/mc-backup`). Vale a pena e é o
+  próximo passo natural, mas não faz parte de "montar o servidor".
+- Plugins. A base aceita plugins em `/data/plugins`; nenhum vem pré-instalado.
+- Proxy Velocity / múltiplos servidores. Não cabe em 2 vCPU.
+
+## Entregáveis
+
+| Arquivo | Conteúdo |
+|---|---|
+| `docker-compose.yml` | Serviço único, limites parametrizados, volume, grace period, healthcheck |
+| `.env.example` | Toda variável com default e comentário explicando o efeito |
+| `README.md` | Passo-a-passo do Coolify, firewall, conexão, operação via RCON, tuning |
+| `.gitignore` | `.env` fora do versionamento |
+
+## Critérios de sucesso
+
+1. Recurso Docker Compose deployado no Coolify sem erro.
+2. Cliente Java conecta em `IP:25565`.
+3. `docker stats` mostra o container dentro dos limites configurados.
+4. Coolify e as aplicações existentes seguem responsivos.
+5. Redeploy no Coolify preserva o mundo.

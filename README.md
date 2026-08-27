@@ -1,0 +1,205 @@
+# Servidor Minecraft Java (Paper) para Coolify
+
+Servidor Minecraft Java Edition rodando Paper, dimensionado para um VPS
+**KVM 2 (2 vCPU / 8 GB)** que já hospeda Coolify e outras aplicações.
+
+O design completo e o raciocínio por trás de cada número estão em
+[docs/superpowers/specs/2026-08-27-minecraft-paper-coolify-design.md](docs/superpowers/specs/2026-08-27-minecraft-paper-coolify-design.md).
+
+---
+
+## Antes de começar: confirme o orçamento
+
+Rode no VPS via SSH:
+
+```bash
+nproc && free -h && df -h / && docker stats --no-stream
+```
+
+O que olhar:
+
+- **`nproc`** — se vier menos que 2, baixe `MC_CPU_LIMIT` e `MC_VIEW_DISTANCE`.
+- **`free -h`, coluna `available`** — subtraia 1 GB de folga para o sistema.
+  O resto é o teto de `MC_MEM_LIMIT`.
+- **`docker stats`** — quanto Coolify e suas apps já consomem de verdade,
+  que costuma ser diferente do que a documentação promete.
+
+Se `available` for menor que 5 GB, ajuste em `.env`:
+`MC_MEM_LIMIT=3G` e `MC_MAX_MEMORY=2G`.
+
+---
+
+## Deploy no Coolify
+
+**1. Suba este repositório para o GitHub** (ou GitLab).
+
+**2. No Coolify:** projeto → **+ New Resource** → **Docker Compose** →
+selecione o repositório e a branch.
+
+**3. Deixe o campo de domínio VAZIO.**
+
+Não é esquecimento. O Coolify roteia recursos como HTTP através do Traefik, e o
+protocolo Java do Minecraft é TCP bruto — não passa por roteador HTTP. A conexão
+acontece pela porta mapeada, não por domínio. Preencher o campo não ajuda em
+nada.
+
+**4. Aba Environment Variables:** cole o conteúdo de
+[.env.example](.env.example) e preencha `RCON_PASSWORD`.
+
+```bash
+openssl rand -base64 24
+```
+
+**5. Libere a porta no firewall do VPS:**
+
+```bash
+sudo ufw allow 25565/tcp && sudo ufw status
+```
+
+Se o provedor tiver firewall próprio no painel (Hostinger tem), libere 25565/TCP
+lá também.
+
+**6. Deploy.** A primeira inicialização é lenta — baixa o Paper e gera o mundo.
+Espere de 2 a 5 minutos antes de tentar conectar.
+
+---
+
+## Conectar
+
+No cliente Minecraft Java, **Multijogador → Adicionar servidor**:
+
+```
+IP_DO_SEU_VPS:25565
+```
+
+A versão do cliente precisa bater com a do servidor. Com `MC_VERSION=LATEST`,
+descubra qual subiu:
+
+```bash
+docker logs $(docker ps -qf name=minecraft) 2>&1 | grep -i "version"
+```
+
+### Domínio no lugar do IP (opcional)
+
+Crie um registro DNS **A**:
+
+| Tipo | Nome | Valor |
+|---|---|---|
+| A | `mc` | IP do VPS |
+
+Conecta em `mc.seudominio.com:25565`. Isso passa longe do Traefik — é resolução
+de nome pura.
+
+Para dispensar o `:25565`, adicione também um registro **SRV**:
+
+| Campo | Valor |
+|---|---|
+| Nome | `_minecraft._tcp.mc` |
+| Prioridade / Peso / Porta | `0` / `5` / `25565` |
+| Alvo | `mc.seudominio.com` |
+
+---
+
+## Operação
+
+O Coolify adiciona um sufixo ao nome do container, então use o filtro em vez do
+nome fixo:
+
+```bash
+CID=$(docker ps -qf name=minecraft)
+```
+
+**Console do servidor (RCON, de dentro do host):**
+
+```bash
+docker exec -i $CID rcon-cli
+```
+
+Abre um prompt. Comandos sem a barra: `list`, `whitelist add Fulano`,
+`op Fulano`, `save-all`, `stop`.
+
+Comando único:
+
+```bash
+docker exec $CID rcon-cli list
+```
+
+**Logs em tempo real:**
+
+```bash
+docker logs -f $CID
+```
+
+**Uso de recursos:**
+
+```bash
+docker stats $CID
+```
+
+**Backup manual do mundo:**
+
+```bash
+docker exec $CID rcon-cli save-all
+docker run --rm -v minecraft-data:/data -v $(pwd):/backup alpine \
+  tar czf /backup/mundo-$(date +%F).tar.gz -C /data world
+```
+
+Confirme o nome real do volume com `docker volume ls | grep minecraft` — o
+Coolify prefixa volumes com o identificador do projeto.
+
+**Plugins:** copie o `.jar` para `/data/plugins` e reinicie.
+
+```bash
+docker cp plugin.jar $CID:/data/plugins/
+docker restart $CID
+```
+
+---
+
+## Tuning
+
+Sintoma primeiro, ajuste depois. Meça com `docker stats` e com `/tps` dentro do
+jogo (20.0 é o ideal; abaixo de 18 já dá pra sentir).
+
+| Sintoma | Ajuste |
+|---|---|
+| TPS baixo, CPU no teto | Baixe `MC_SIMULATION_DISTANCE` para 4, depois `MC_VIEW_DISTANCE` para 6 |
+| Container reiniciando sozinho | OOM-kill. Suba `MC_MEM_LIMIT` **ou** baixe `MC_MAX_MEMORY` — o heap precisa ficar em ~75% do limite |
+| Coolify lento durante o jogo | Baixe `MC_CPU_LIMIT` para 1.0 |
+| Servidor ocioso comendo CPU | Ligue `MC_ENABLE_AUTOPAUSE=TRUE` |
+| Travadas ao explorar terreno novo | Normal em 2 vCPU (geração de chunk). Pré-gere o mundo com o plugin Chunky |
+
+Confirmar OOM-kill:
+
+```bash
+docker inspect $CID --format '{{.State.OOMKilled}} {{.State.ExitCode}}'
+```
+
+`true` ou exit code `137` = memória. Não é bug do Minecraft.
+
+### A regra que mais gente erra
+
+`MC_MAX_MEMORY` (heap da JVM) **nunca** deve igualar `MC_MEM_LIMIT` (limite do
+container). Metaspace, buffers diretos do Netty, threads e overhead de GC vivem
+fora do heap e contam para o limite do cgroup. Heap igual ao limite não gera
+pressão de GC — gera OOM-kill: o container morre em silêncio, sem stack trace,
+sem nada no log do jogo.
+
+---
+
+## Segurança
+
+- `ONLINE_MODE=TRUE` — só contas Microsoft/Mojang legítimas. Não desligue.
+- A porta do RCON (25575) **não** é exposta ao host, de propósito. Administração
+  só de dentro do VPS.
+- Se você divulgar o IP em Discord ou fórum, ligue a whitelist:
+  `MC_ENABLE_WHITELIST=TRUE` e liste as contas em `MC_WHITELIST`.
+- `.env` está no `.gitignore`. Não comite a senha do RCON.
+
+---
+
+## Próximo passo natural
+
+Backup automático do mundo com o sidecar `itzg/mc-backup` — um segundo serviço
+no compose, com retenção e agendamento. Ficou fora daqui de propósito para não
+misturar escopo. Vale fazer antes de o mundo ter valor sentimental.
