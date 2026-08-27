@@ -35,7 +35,8 @@ nproc && free -h && df -h / && docker stats --no-stream
 
 ## Arquitetura
 
-Um único serviço Docker: `itzg/minecraft-server:java21` com `TYPE=PAPER`. É a
+Um único serviço Docker: `itzg/minecraft-server` (tag do Java parametrizada,
+default `java25`) com `TYPE=PAPER`. É a
 imagem padrão de fato do ecossistema — configuração inteira por variáveis de
 ambiente, tratamento correto de SIGTERM, healthcheck embutido. Não há motivo
 para construir imagem própria.
@@ -63,6 +64,22 @@ Internet ──TCP 25565──> [firewall provedor] ──> [container minecraft
 do Netty, threads e overhead de GC vivem fora do heap e contam para o cgroup.
 Heap = limite produz OOM-kill em vez de GC pressure — o container morre em
 silêncio, sem stack trace.
+
+## Acoplamento versão do Minecraft ↔ versão do Java
+
+Cada versão do Minecraft exige uma versão mínima de Java. Deixar `MC_VERSION`
+flutuando em `LATEST` com a tag do Java fixa é um bug esperando para acontecer:
+quando o Minecraft sobe o requisito de Java, o servidor passa a sair com
+`exitCode 1` em loop de restart, sem nunca abrir a porta — e o erro real fica
+soterrado entre as reinicializações no log.
+
+Isto aconteceu de fato na primeira tentativa de deploy: `LATEST` resolveu para
+MC 26.1, que exige Java 25, contra uma imagem `java21`.
+
+Decisão: a tag da imagem é parametrizada (`MC_IMAGE_TAG`, default `java25`) e o
+acoplamento está documentado nos dois arquivos. Assim que o servidor estabiliza,
+`MC_VERSION` deve ser fixada na versão exata — remove o problema pela raiz e
+evita que um redeploy obrigue todos os jogadores a atualizar o cliente sem aviso.
 
 ## Rede: por que não existe domínio
 

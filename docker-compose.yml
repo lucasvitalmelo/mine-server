@@ -1,6 +1,12 @@
 services:
   minecraft:
-    image: itzg/minecraft-server:java21
+    # ATENÇÃO: a tag do Java e MC_VERSION são ACOPLADAS. Cada versão do
+    # Minecraft exige uma versão mínima de Java, e se a imagem tiver Java
+    # velho o servidor sai com exitCode 1 em loop de restart, sem nunca abrir
+    # a porta. Exemplo real: MC 26.1 exige Java 25; com a tag java21 ele nem
+    # inicia. Tags disponíveis: java8, java11, java17, java21, java25.
+    # Java 25 roda tudo que é moderno — não baixe esta tag sem motivo.
+    image: itzg/minecraft-server:${MC_IMAGE_TAG:-java25}
     restart: unless-stopped
 
     # O console do servidor precisa de TTY para aceitar comandos via

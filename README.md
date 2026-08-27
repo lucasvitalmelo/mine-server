@@ -114,6 +114,10 @@ ss -tlnp | grep 25565
 - **Não aparece nada** → o container não subiu ou não publicou a porta.
   Investigue com `docker ps -a` e `docker logs $(docker ps -aqf name=minecraft)`.
 
+Num loop de restart o log se repete e o erro real fica soterrado entre as
+reinicializações. Procure a linha de erro **antes** de cada
+`Minecraft server failed ... exitCode 1`, não as últimas linhas do log.
+
 Se estiver escutando e a porta liberada no painel, o próximo suspeito é
 incompatibilidade de versão do cliente — o erro no jogo diz qual versão o
 servidor espera.
@@ -211,6 +215,7 @@ jogo (20.0 é o ideal; abaixo de 18 já dá pra sentir).
 | Container reiniciando sozinho | OOM-kill. Suba `MC_MEM_LIMIT` **ou** baixe `MC_MAX_MEMORY` — o heap precisa ficar em ~75% do limite |
 | Coolify lento durante o jogo | Baixe `MC_CPU_LIMIT` para 1.0 |
 | Servidor ocioso comendo CPU | Ligue `MC_ENABLE_AUTOPAUSE=TRUE` **e comente o bloco `healthcheck`** no compose — o `mc-health` sondando a porta a cada 30s impede a pausa |
+| Container em loop de restart, porta nunca abre | Veja o log: se disser `requires running the server with Java NN or above`, a tag da imagem tem Java velho para a versão do Minecraft. Suba `MC_IMAGE_TAG` (ex: `java25`) **ou** fixe `MC_VERSION` numa versão mais antiga |
 | Travadas ao explorar terreno novo | Normal em 2 vCPU (geração de chunk). Pré-gere o mundo com o plugin Chunky |
 
 Confirmar OOM-kill:
