@@ -1,7 +1,9 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
-COPY package.json ./
-RUN npm install --no-audit --no-fund
+COPY package.json package-lock.json ./
+# npm ci em vez de install: respeita o lockfile exatamente, entao o build no
+# Coolify produz as mesmas versoes que foram validadas localmente.
+RUN npm ci --no-audit --no-fund
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
