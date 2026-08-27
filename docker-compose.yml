@@ -80,7 +80,7 @@ services:
       # Com ONLINE_MODE=FALSE, deixe VAZIO. Um op pré-definido por nome é
       # uma conta de administrador com senha em branco na internet.
       OPS: "${MC_OPS:-}"
-      ENABLE_WHITELIST: "${MC_ENABLE_WHITELIST:-FALSE}"
+      ENABLE_WHITELIST: "${MC_ENABLE_WHITELIST:-TRUE}"
       WHITELIST: "${MC_WHITELIST:-}"
 
       # --- RCON ----------------------------------------------------------
