@@ -5,3 +5,9 @@
 # Dados do servidor, caso alguém rode local com bind mount
 /data/
 *.tar.gz
+
+# Painel Next.js
+panel/node_modules/
+panel/.next/
+panel/next-env.d.ts
+panel/tsconfig.tsbuildinfo
