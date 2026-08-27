@@ -41,7 +41,7 @@ ambiente, tratamento correto de SIGTERM, healthcheck embutido. Não há motivo
 para construir imagem própria.
 
 ```
-Internet ──TCP 25565──> [firewall ufw] ──> [container minecraft] ──> volume /data
+Internet ──TCP 25565──> [firewall provedor] ──> [container minecraft] ──> volume /data
                                                   │
                         Traefik/Coolify ──X──  (não participa: MC não é HTTP)
 ```
