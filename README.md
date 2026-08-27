@@ -298,6 +298,74 @@ o IP para qualquer pessoa.
 
 ---
 
+## Painel web de controle
+
+Serviço `panel` no mesmo compose: Next.js falando RCON, protegido por Cloudflare
+Access. Faz o que a tabela de comandos faz, com botão: lista de online, whitelist,
+kick, anúncio no chat, save, e um console livre.
+
+### Por que ele mora neste compose
+
+O painel fala com o servidor de jogo em `minecraft:25575`, pela rede interna do
+compose. A porta do RCON continua sem publicação no host — o painel entra por
+dentro. Um recurso separado no Coolify ficaria em outra rede Docker e não
+alcançaria nada.
+
+### Passo 1 — Criar a aplicação no Cloudflare Access
+
+**Zero Trust** → **Access** → **Applications** → **Add an application** →
+**Self-hosted**
+
+| Campo | Valor |
+|---|---|
+| Application name | `Painel Minecraft` |
+| Session duration | 24 horas |
+| Subdomain / Domain | `painel` / `inkttoo.com` |
+
+Na política, use **Emails** e liste quem pode entrar. Um e-mail por pessoa.
+
+Depois de salvar, anote o **Application Audience (AUD) Tag** na aba Overview.
+
+### Passo 2 — DNS
+
+Registro `A` para `painel`, apontando para o IP do VPS, **com a nuvem laranja
+ligada**.
+
+Aqui o laranja é o que você quer — o painel é HTTP e passa pelo proxy sem
+problema. Só o registro do jogo precisa ficar cinza.
+
+### Passo 3 — Variáveis no Coolify
+
+```
+PANEL_FQDN=https://painel.inkttoo.com
+CF_ACCESS_TEAM_DOMAIN=sua-org.cloudflareaccess.com
+CF_ACCESS_AUD=<o AUD tag do passo 1>
+```
+
+Redeploy. O Coolify vai buildar o painel — a primeira vez leva alguns minutos.
+
+### Por que o painel valida o JWT, e não só confia no header
+
+O Cloudflare Access protege o caminho que passa pelo Cloudflare. Quem bater
+direto no IP do VPS com o `Host` correto chega no painel sem passar por
+autenticação nenhuma — e o painel tem controle total do servidor de jogo,
+incluindo `stop`.
+
+Então o painel verifica a assinatura do token do Access contra as chaves
+públicas do Cloudflare. Sem um JWT válido, nada entra. E se as variáveis do
+Access estiverem ausentes, ele recusa **tudo** em vez de liberar tudo — falha
+fechada.
+
+### Verificar que o bypass está fechado
+
+```bash
+curl -s -o /dev/null -w "%{http_code}
+" -H "Host: painel.inkttoo.com" http://IP_DO_VPS/
+```
+
+Esperado: **403**. Se vier `200`, o guard não está ativo — confira se
+`CF_ACCESS_TEAM_DOMAIN` e `CF_ACCESS_AUD` chegaram no container.
+
 ## Próximo passo natural
 
 Backup automático do mundo com o sidecar `itzg/mc-backup` — um segundo serviço

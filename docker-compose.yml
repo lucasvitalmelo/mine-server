@@ -133,5 +133,50 @@ services:
       timeout: 10s
       retries: 5
 
+  # ---------------------------------------------------------------------
+  # Painel web de controle (Next.js + RCON), protegido por Cloudflare Access
+  # ---------------------------------------------------------------------
+  panel:
+    build:
+      context: ./panel
+    restart: unless-stopped
+
+    environment:
+      # Alcança o servidor de jogo pelo nome do serviço, na rede interna do
+      # compose. A porta 25575 continua SEM publicacao no host — o painel
+      # entra por dentro. Por isso o painel tem que estar NESTE compose: um
+      # recurso separado no Coolify fica em outra rede e nao alcanca.
+      RCON_HOST: "minecraft"
+      RCON_PORT: "25575"
+      RCON_PASSWORD: "${RCON_PASSWORD:?defina RCON_PASSWORD nas variaveis de ambiente}"
+
+      # Guard do Cloudflare Access. Sem estas duas, o painel recusa TODA
+      # requisicao — falha fechada, nao aberta. Onde achar cada valor:
+      #   TEAM_DOMAIN: Zero Trust > Settings > Custom Pages (ex: sua-org.cloudflareaccess.com)
+      #   AUD:         Zero Trust > Access > Applications > sua app > Overview
+      CF_ACCESS_TEAM_DOMAIN: "${CF_ACCESS_TEAM_DOMAIN:?defina CF_ACCESS_TEAM_DOMAIN}"
+      CF_ACCESS_AUD: "${CF_ACCESS_AUD:?defina CF_ACCESS_AUD}"
+
+      # Dominio do painel. O Coolify le esta variavel e configura o Traefik.
+      # Painel e HTTP, entao aqui o proxy do Coolify e a nuvem LARANJA do
+      # Cloudflare funcionam normalmente — diferente do jogo.
+      SERVICE_FQDN_PANEL_3000: "${PANEL_FQDN:-}"
+
+      TZ: "${TZ:-America/Sao_Paulo}"
+
+    # `expose`, nao `ports`: o painel so deve ser alcancavel via Traefik, para
+    # nao existir um caminho IP:porta que contorne o Cloudflare Access.
+    expose:
+      - "3000"
+
+    depends_on:
+      - minecraft
+
+    deploy:
+      resources:
+        limits:
+          memory: ${PANEL_MEM_LIMIT:-256M}
+          cpus: "${PANEL_CPU_LIMIT:-0.3}"
+
 volumes:
   minecraft-data:
