@@ -1,45 +1,108 @@
-import { headers } from 'next/headers';
-import { rconSafe, parseNameList } from '../lib/rcon';
+import { rconBatchSafe, parseNameList } from '../lib/rcon';
+import { serverProperties, ligado } from '../lib/props';
 import {
   addWhitelist,
   removeWhitelist,
-  toggleWhitelist,
+  setWhitelist,
   kick,
   saveWorld,
   say,
+  runCommand,
 } from './actions';
-import { Console } from './Console';
+import { AutoRefresh, Botao, FormAdicionar, FormAnunciar, Console } from './ui';
 
 export const dynamic = 'force-dynamic';
 
+/** "TPS from last 1m, 5m, 15m: 19.87, 19.94, 20.0" -> "19.87" */
+function primeiroTps(raw: string): string | null {
+  const m = raw.match(/(\d+[.,]\d+)/);
+  return m ? m[1].replace(',', '.') : null;
+}
+
+function corTps(tps: string | null): string {
+  if (!tps) return '';
+  const n = Number(tps);
+  if (n >= 19) return 'bom';
+  if (n >= 17) return 'atencao';
+  return 'ruim';
+}
+
 export default async function Page() {
-  const h = await headers();
-  const email = h.get('cf-access-authenticated-user-email');
-
-  const [online, whitelistRaw, tps] = await Promise.all([
-    rconSafe('list'),
-    rconSafe('whitelist list'),
-    rconSafe('tps'),
+  const [online, whitelistRaw, tpsRaw] = await rconBatchSafe([
+    'list',
+    'whitelist list',
+    'tps',
   ]);
+  const props = await serverProperties();
 
-  const liberados = parseNameList(whitelistRaw);
   const conectados = parseNameList(online);
+  const liberados = parseNameList(whitelistRaw);
+  const tps = primeiroTps(tpsRaw);
+  const whitelistLigada = ligado(props, 'white-list');
+  const maxPlayers = props?.['max-players'];
+  const semJogo = online.startsWith('Erro:');
 
   return (
     <main>
       <header>
-        <h1>Painel do servidor</h1>
-        <span className="who">{email ? `logado como ${email}` : 'sessão via Cloudflare Access'}</span>
+        <div className="titulo">
+          <h1>Painel do servidor</h1>
+          <AutoRefresh />
+        </div>
       </header>
 
-      <section>
-        <h2>Estado agora</h2>
-        <pre className="status">{online.trim()}</pre>
-        <pre className="status">{tps.trim()}</pre>
-        <p className="hint">
-          TPS é o pulso do servidor: 20,0 é o ideal. Abaixo de 18 os jogadores já
-          sentem travada.
+      {semJogo ? (
+        <p className="aviso erro">
+          Sem contato com o servidor de jogo. {online}
         </p>
+      ) : null}
+
+      <section>
+        <h2>Estado</h2>
+        <div className="painel">
+          <div className="metrica">
+            <span className="rotulo">Online</span>
+            <span className="valor">
+              {conectados.length}
+              {maxPlayers ? <span className="de">/{maxPlayers}</span> : null}
+            </span>
+          </div>
+
+          <div className="metrica">
+            <span className="rotulo">TPS</span>
+            <span className={`valor ${corTps(tps)}`}>{tps ?? '—'}</span>
+          </div>
+
+          <div className="metrica">
+            <span className="rotulo">Whitelist</span>
+            <span className={`valor texto ${whitelistLigada ? 'bom' : whitelistLigada === false ? 'ruim' : ''}`}>
+              {whitelistLigada === null ? '—' : whitelistLigada ? 'ligada' : 'desligada'}
+            </span>
+          </div>
+
+          <div className="metrica">
+            <span className="rotulo">Contas</span>
+            <span className={`valor texto ${ligado(props, 'online-mode') ? 'bom' : 'atencao'}`}>
+              {props?.['online-mode'] === undefined
+                ? '—'
+                : ligado(props, 'online-mode')
+                  ? 'verificadas'
+                  : 'sem verificação'}
+            </span>
+          </div>
+        </div>
+
+        {props ? (
+          <p className="hint">
+            {props['difficulty']} · {props['gamemode']} · visão {props['view-distance']} ·
+            simulação {props['simulation-distance']} · mundo {props['level-name']}
+          </p>
+        ) : (
+          <p className="hint">
+            Configuração do jogo indisponível — o volume do Minecraft não está montado
+            no painel.
+          </p>
+        )}
       </section>
 
       <section>
@@ -53,9 +116,9 @@ export default async function Page() {
                 {nome}
                 <form action={kick}>
                   <input type="hidden" name="nick" value={nome} />
-                  <button type="submit" title={`Expulsar ${nome}`} aria-label={`Expulsar ${nome}`}>
+                  <Botao className="x" title={`Expulsar ${nome}`}>
                     ×
-                  </button>
+                  </Botao>
                 </form>
               </span>
             ))}
@@ -66,10 +129,24 @@ export default async function Page() {
 
       <section>
         <h2>Whitelist</h2>
-        <form action={addWhitelist} className="row">
-          <input name="nick" placeholder="Nick do jogador" autoComplete="off" className="grow" />
-          <button type="submit">Liberar</button>
-        </form>
+
+        <div className="row toggle">
+          <span className={`estado ${whitelistLigada ? 'bom' : whitelistLigada === false ? 'ruim' : ''}`}>
+            {whitelistLigada === null
+              ? 'Estado desconhecido'
+              : whitelistLigada
+                ? 'Ligada — só quem está na lista entra'
+                : 'Desligada — qualquer um entra'}
+          </span>
+          <form action={setWhitelist}>
+            <input type="hidden" name="ligar" value={whitelistLigada ? 'false' : 'true'} />
+            <Botao className={whitelistLigada ? 'danger' : ''} pendingLabel="…">
+              {whitelistLigada ? 'Desligar' : 'Ligar'}
+            </Botao>
+          </form>
+        </div>
+
+        <FormAdicionar action={addWhitelist} />
 
         {liberados.length === 0 ? (
           <p className="empty">Nenhum jogador liberado. Com a whitelist ligada, ninguém entra.</p>
@@ -80,48 +157,35 @@ export default async function Page() {
                 {nome}
                 <form action={removeWhitelist}>
                   <input type="hidden" name="nick" value={nome} />
-                  <button type="submit" title={`Remover ${nome}`} aria-label={`Remover ${nome}`}>
+                  <Botao className="x" title={`Remover ${nome}`}>
                     ×
-                  </button>
+                  </Botao>
                 </form>
               </span>
             ))}
           </div>
         )}
 
-        <div className="row">
-          <form action={toggleWhitelist}>
-            <input type="hidden" name="ligar" value="true" />
-            <button type="submit" className="ghost">Ligar whitelist</button>
-          </form>
-          <form action={toggleWhitelist}>
-            <input type="hidden" name="ligar" value="false" />
-            <button type="submit" className="danger">Desligar whitelist</button>
-          </form>
-        </div>
-
         <p className="hint">
-          Este servidor aceita clientes sem conta Microsoft, então a whitelist compara
-          apenas o nome digitado — e o nome pode ser falsificado. Ela barra scanner e
-          curioso, não quem sabe o nick de alguém. Autenticação de verdade exige um
-          plugin de login.
+          {ligado(props, 'online-mode') === false
+            ? 'Este servidor não verifica contas, então a whitelist compara apenas o nome digitado — e nome pode ser falsificado. Ela barra scanner e curioso, não quem sabe o nick de alguém.'
+            : 'O servidor verifica as contas contra a Microsoft, então a whitelist vale por identidade real.'}
         </p>
       </section>
 
       <section>
         <h2>Ações rápidas</h2>
-        <form action={say} className="row">
-          <input name="mensagem" placeholder="Mensagem no chat do jogo" autoComplete="off" className="grow" />
-          <button type="submit">Anunciar</button>
-        </form>
+        <FormAnunciar action={say} />
         <form action={saveWorld}>
-          <button type="submit" className="ghost">Salvar o mundo agora</button>
+          <Botao className="ghost" pendingLabel="Salvando…">
+            Salvar o mundo agora
+          </Botao>
         </form>
       </section>
 
       <section>
         <h2>Console</h2>
-        <Console />
+        <Console action={runCommand} />
       </section>
     </main>
   );

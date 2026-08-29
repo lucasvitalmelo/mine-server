@@ -52,6 +52,37 @@ export async function rcon(command: string): Promise<string> {
   }
 }
 
+/**
+ * Envia varios comandos numa unica conexao.
+ *
+ * A tela se atualiza sozinha a cada poucos segundos e precisa de tres
+ * consultas por ciclo. Uma conexao por comando multiplicaria por tres o
+ * handshake contra o servidor de jogo, que roda com CPU contada.
+ */
+export async function rconBatch(comandos: string[]): Promise<string[]> {
+  if (fakeRcon) return comandos.map(fakeResposta);
+  if (!password) throw new Error('RCON_PASSWORD não está definida no painel.');
+
+  const client = await Rcon.connect({ host, port, password, timeout: 5000 });
+  try {
+    const saidas: string[] = [];
+    for (const c of comandos) saidas.push(await client.send(c));
+    return saidas;
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+/** Igual a rconBatch(), mas devolve a mensagem de erro em cada posição. */
+export async function rconBatchSafe(comandos: string[]): Promise<string[]> {
+  try {
+    return await rconBatch(comandos);
+  } catch (err) {
+    const msg = `Erro: ${err instanceof Error ? err.message : String(err)}`;
+    return comandos.map(() => msg);
+  }
+}
+
 /** Igual a rcon(), mas devolve a mensagem de erro em vez de estourar. */
 export async function rconSafe(command: string): Promise<string> {
   try {

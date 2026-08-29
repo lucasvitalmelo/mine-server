@@ -348,6 +348,35 @@ Use apenas ASCII — Basic Auth não lida bem com acentos.
 
 Redeploy. O Coolify vai buildar o painel; a primeira vez leva alguns minutos.
 
+### O que a tela mostra
+
+Ela se atualiza sozinha a cada 5 segundos — sem recarregar a página, só os dados
+trocam. O indicador no topo diz quando foi a última atualização, e dá para pausar
+(útil enquanto você digita um nick) ou forçar uma atualização na hora.
+
+Os três comandos de leitura (`list`, `whitelist list`, `tps`) vão numa **única
+conexão RCON** por ciclo. Uma conexão por comando triplicaria o handshake contra
+um servidor de jogo que já roda com CPU contada.
+
+### Por que o painel monta o volume do jogo
+
+```yaml
+    volumes:
+      - minecraft-data:/mc:ro
+```
+
+O RCON **não tem** comando que responda "a whitelist está ligada?" — o
+`whitelist list` devolve os nomes tanto ligada quanto desligada. Sem ler o
+`server.properties`, o painel só poderia deduzir a partir do último clique, e
+mentiria assim que alguém mexesse por fora.
+
+Com o arquivo em mãos, ele mostra o estado real da whitelist, do `online-mode`,
+da dificuldade e das distâncias — como está aplicado, não como você imagina.
+
+O `:ro` é somente leitura: o painel não consegue escrever no mundo nem por erro
+de código. Se o volume não estiver montado, a tela some com esses campos e segue
+funcionando.
+
 ### Como a autenticação funciona
 
 HTTP Basic Auth no middleware do Next.js. O navegador mostra o popup nativo de

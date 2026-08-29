@@ -6,6 +6,8 @@ import { rcon } from '../lib/rcon';
 /** Nick do Minecraft: 3-16 caracteres, letras, números e underscore. */
 const NICK = /^[A-Za-z0-9_]{3,16}$/;
 
+export type Resultado = { ok: boolean; msg: string };
+
 function nick(formData: FormData, campo = 'nick'): string {
   const valor = String(formData.get(campo) ?? '').trim();
   if (!NICK.test(valor)) {
@@ -14,52 +16,65 @@ function nick(formData: FormData, campo = 'nick'): string {
   return valor;
 }
 
-export async function addWhitelist(formData: FormData) {
-  await rcon(`whitelist add ${nick(formData)}`);
-  revalidatePath('/');
+function falha(err: unknown): Resultado {
+  return { ok: false, msg: err instanceof Error ? err.message : String(err) };
 }
+
+/* ---- ações com retorno para a tela ---------------------------------- */
+
+export async function addWhitelist(_prev: Resultado | null, formData: FormData): Promise<Resultado> {
+  try {
+    const n = nick(formData);
+    await rcon(`whitelist add ${n}`);
+    revalidatePath('/');
+    return { ok: true, msg: `${n} liberado.` };
+  } catch (err) {
+    return falha(err);
+  }
+}
+
+export async function say(_prev: Resultado | null, formData: FormData): Promise<Resultado> {
+  try {
+    const msg = String(formData.get('mensagem') ?? '').trim();
+    if (!msg) return { ok: false, msg: 'Mensagem vazia.' };
+    await rcon(`say ${msg}`);
+    return { ok: true, msg: 'Enviado ao chat do jogo.' };
+  } catch (err) {
+    return falha(err);
+  }
+}
+
+export async function runCommand(_prev: Resultado | null, formData: FormData): Promise<Resultado> {
+  try {
+    const cmd = String(formData.get('comando') ?? '').trim();
+    if (!cmd) return { ok: false, msg: 'Digite um comando.' };
+    const out = await rcon(cmd);
+    revalidatePath('/');
+    return { ok: true, msg: out.trim() || '(sem saída)' };
+  } catch (err) {
+    return falha(err);
+  }
+}
+
+/* ---- ações sem retorno: a tela reflete o efeito sozinha -------------- */
 
 export async function removeWhitelist(formData: FormData) {
   await rcon(`whitelist remove ${nick(formData)}`);
   revalidatePath('/');
 }
 
-export async function toggleWhitelist(formData: FormData) {
+export async function setWhitelist(formData: FormData) {
   const ligar = String(formData.get('ligar')) === 'true';
   await rcon(`whitelist ${ligar ? 'on' : 'off'}`);
   revalidatePath('/');
 }
 
 export async function kick(formData: FormData) {
-  const motivo = String(formData.get('motivo') ?? '').trim() || 'Removido pelo painel';
-  await rcon(`kick ${nick(formData)} ${motivo}`);
+  await rcon(`kick ${nick(formData)} Removido pelo painel`);
   revalidatePath('/');
 }
 
 export async function saveWorld() {
   await rcon('save-all');
   revalidatePath('/');
-}
-
-export async function say(formData: FormData) {
-  const msg = String(formData.get('mensagem') ?? '').trim();
-  if (!msg) throw new Error('Mensagem vazia.');
-  await rcon(`say ${msg}`);
-  revalidatePath('/');
-}
-
-/** Console livre. Devolve a saída para a tela em vez de recarregar a página. */
-export async function runCommand(
-  _prev: { output: string } | null,
-  formData: FormData,
-): Promise<{ output: string }> {
-  const cmd = String(formData.get('comando') ?? '').trim();
-  if (!cmd) return { output: 'Digite um comando.' };
-  try {
-    const out = await rcon(cmd);
-    revalidatePath('/');
-    return { output: out.trim() || '(sem saída)' };
-  } catch (err) {
-    return { output: `Erro: ${err instanceof Error ? err.message : String(err)}` };
-  }
 }

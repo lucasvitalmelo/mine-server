@@ -158,6 +158,14 @@ services:
 
       TZ: "${TZ:-America/Sao_Paulo}"
 
+    volumes:
+      # SOMENTE LEITURA. O painel le o server.properties para saber o estado
+      # real da whitelist, do online-mode e das distancias — o RCON nao tem
+      # comando que responda isso (`whitelist list` devolve os nomes tanto
+      # ligada quanto desligada). O `:ro` garante que o painel nao escreve no
+      # mundo nem por engano de codigo.
+      - minecraft-data:/mc:ro
+
     # `expose`, nao `ports`: o painel so e alcancavel pelo Traefik, entao nao
     # existe um caminho IP:porta que chegue nele sem passar pelo dominio.
     expose:
