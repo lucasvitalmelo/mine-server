@@ -134,7 +134,7 @@ services:
       retries: 5
 
   # ---------------------------------------------------------------------
-  # Painel web de controle (Next.js + RCON), protegido por Cloudflare Access
+  # Painel web de controle (Next.js + RCON), protegido por Basic Auth
   # ---------------------------------------------------------------------
   panel:
     build:
@@ -150,22 +150,16 @@ services:
       RCON_PORT: "25575"
       RCON_PASSWORD: "${RCON_PASSWORD:?defina RCON_PASSWORD nas variaveis de ambiente}"
 
-      # Guard do Cloudflare Access. Sem estas duas, o painel recusa TODA
-      # requisicao — falha fechada, nao aberta. Onde achar cada valor:
-      #   TEAM_DOMAIN: Zero Trust > Settings > Custom Pages (ex: sua-org.cloudflareaccess.com)
-      #   AUD:         Zero Trust > Access > Applications > sua app > Overview
-      CF_ACCESS_TEAM_DOMAIN: "${CF_ACCESS_TEAM_DOMAIN:?defina CF_ACCESS_TEAM_DOMAIN}"
-      CF_ACCESS_AUD: "${CF_ACCESS_AUD:?defina CF_ACCESS_AUD}"
-
-      # Dominio do painel. O Coolify le esta variavel e configura o Traefik.
-      # Painel e HTTP, entao aqui o proxy do Coolify e a nuvem LARANJA do
-      # Cloudflare funcionam normalmente — diferente do jogo.
-      SERVICE_FQDN_PANEL_3000: "${PANEL_FQDN:-}"
+      # Autenticacao do painel: Basic Auth com senha compartilhada.
+      # Sem PANEL_PASSWORD o painel recusa TODA requisicao — falha fechada.
+      # Um painel sem senha por engano e pior que um painel fora do ar.
+      PANEL_USER: "${PANEL_USER:-admin}"
+      PANEL_PASSWORD: "${PANEL_PASSWORD:?defina PANEL_PASSWORD nas variaveis de ambiente}"
 
       TZ: "${TZ:-America/Sao_Paulo}"
 
-    # `expose`, nao `ports`: o painel so deve ser alcancavel via Traefik, para
-    # nao existir um caminho IP:porta que contorne o Cloudflare Access.
+    # `expose`, nao `ports`: o painel so e alcancavel pelo Traefik, entao nao
+    # existe um caminho IP:porta que chegue nele sem passar pelo dominio.
     expose:
       - "3000"
 

@@ -300,9 +300,9 @@ o IP para qualquer pessoa.
 
 ## Painel web de controle
 
-Serviço `panel` no mesmo compose: Next.js falando RCON, protegido por Cloudflare
-Access. Faz o que a tabela de comandos faz, com botão: lista de online, whitelist,
-kick, anúncio no chat, save, e um console livre.
+Serviço `panel` no mesmo compose: Next.js falando RCON, protegido por senha.
+Faz o que a tabela de comandos faz, com botão: lista de online, whitelist, kick,
+anúncio no chat, save, e um console livre.
 
 ### Por que ele mora neste compose
 
@@ -311,60 +311,96 @@ compose. A porta do RCON continua sem publicação no host — o painel entra po
 dentro. Um recurso separado no Coolify ficaria em outra rede Docker e não
 alcançaria nada.
 
-### Passo 1 — Criar a aplicação no Cloudflare Access
+### Passo 1 — DNS
 
-**Zero Trust** → **Access** → **Applications** → **Add an application** →
-**Self-hosted**
-
-| Campo | Valor |
-|---|---|
-| Application name | `Painel Minecraft` |
-| Session duration | 24 horas |
-| Subdomain / Domain | `painel` / `seudominio.com` |
-
-Na política, use **Emails** e liste quem pode entrar. Um e-mail por pessoa.
-
-Depois de salvar, anote o **Application Audience (AUD) Tag** na aba Overview.
-
-### Passo 2 — DNS
-
-Registro `A` para `painel`, apontando para o IP do VPS, **com a nuvem laranja
-ligada**.
-
-Aqui o laranja é o que você quer — o painel é HTTP e passa pelo proxy sem
+Registro `A` para `painel`, apontando para o IP do VPS. Se você usa Cloudflare,
+**pode deixar a nuvem laranja** — o painel é HTTP e passa pelo proxy sem
 problema. Só o registro do jogo precisa ficar cinza.
 
-### Passo 3 — Variáveis no Coolify
+### Passo 2 — Domínio no Coolify
+
+**Configuration** → **General** → campo **Domains for panel**:
 
 ```
-PANEL_FQDN=https://painel.seudominio.com
-CF_ACCESS_TEAM_DOMAIN=sua-org.cloudflareaccess.com
-CF_ACCESS_AUD=<o AUD tag do passo 1>
+https://painel.seudominio.com:3000
 ```
 
-Redeploy. O Coolify vai buildar o painel — a primeira vez leva alguns minutos.
+O `:3000` não é a porta pública — é como o Coolify sabe para qual porta do
+container rotear. Sem ele o Coolify tenta adivinhar e falha em silêncio, com o
+Traefik respondendo `503 no available server`.
 
-### Por que o painel valida o JWT, e não só confia no header
+**Domains for minecraft fica vazio.** Ali é TCP puro; domínio não se aplica.
 
-O Cloudflare Access protege o caminho que passa pelo Cloudflare. Quem bater
-direto no IP do VPS com o `Host` correto chega no painel sem passar por
-autenticação nenhuma — e o painel tem controle total do servidor de jogo,
-incluindo `stop`.
+### Passo 3 — Senha
 
-Então o painel verifica a assinatura do token do Access contra as chaves
-públicas do Cloudflare. Sem um JWT válido, nada entra. E se as variáveis do
-Access estiverem ausentes, ele recusa **tudo** em vez de liberar tudo — falha
-fechada.
-
-### Verificar que o bypass está fechado
+Gere uma senha longa e cole nas Environment Variables:
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}
-" -H "Host: painel.seudominio.com" http://IP_DO_VPS/
+openssl rand -base64 24
 ```
 
-Esperado: **403**. Se vier `200`, o guard não está ativo — confira se
-`CF_ACCESS_TEAM_DOMAIN` e `CF_ACCESS_AUD` chegaram no container.
+```
+PANEL_USER=admin
+PANEL_PASSWORD=<a senha gerada>
+```
+
+Use apenas ASCII — Basic Auth não lida bem com acentos.
+
+Redeploy. O Coolify vai buildar o painel; a primeira vez leva alguns minutos.
+
+### Como a autenticação funciona
+
+HTTP Basic Auth no middleware do Next.js. O navegador mostra o popup nativo de
+usuário e senha, e guarda a credencial pela sessão.
+
+Duas propriedades que importam:
+
+**Falha fechada.** Sem `PANEL_PASSWORD` definida, o painel recusa *toda*
+requisição com 403 — inclusive com credencial correta. Um painel que sobe sem
+senha por engano seria pior que um painel fora do ar: ele controla o servidor
+inteiro, `stop` incluído.
+
+**Cobre as server actions.** O matcher do middleware pega todas as rotas, e
+server actions são POST na própria rota. Não existe caminho que execute um
+comando RCON sem passar pela senha.
+
+A comparação usa digests SHA-256 em vez de `===`. Comparação de string sai no
+primeiro caractere diferente, e esse tempo é mensurável — dá para descobrir a
+senha caractere a caractere. Comparar digests de tamanho fixo remove esse canal.
+
+### Rodar localmente
+
+Dois portões, ambos exigindo `NODE_ENV != production` (que o Dockerfile fixa em
+produção, tornando-os inalcançáveis lá):
+
+| Variável | Efeito |
+|---|---|
+| `PANEL_DEV_BYPASS=true` | Pula a autenticação |
+| `PANEL_DEV_FAKE_RCON=true` | Respostas simuladas, sem servidor de jogo |
+
+```bash
+cd panel && npm install && npm run dev
+```
+
+Crie um `panel/.env.local` com as duas — o arquivo é ignorado pelo Git.
+
+### Se der `Error 526` no Cloudflare
+
+Significa que o Cloudflare está em `Full (strict)` e o certificado do seu
+servidor não é válido. A causa mais comum é o desafio do Let's Encrypt ser
+bloqueado antes de chegar no Traefik — por exemplo, com Cloudflare Access na
+frente do mesmo hostname, que intercepta `/.well-known/acme-challenge/` e
+devolve tela de login.
+
+Verifique qual certificado o origin apresenta:
+
+```bash
+openssl s_client -connect IP_DO_VPS:443 -servername painel.seudominio.com </dev/null 2>/dev/null | openssl x509 -noout -subject
+```
+
+`CN=TRAEFIK DEFAULT CERT` significa que nenhum certificado real foi emitido.
+Remova o que estiver bloqueando o caminho do desafio e redeploye; ou, como
+saída rápida, mude o SSL/TLS do Cloudflare para `Full`.
 
 ## Próximo passo natural
 

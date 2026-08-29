@@ -1,72 +1,105 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 /**
- * Guard do Cloudflare Access.
+ * Autenticação do painel: HTTP Basic Auth com uma senha compartilhada.
  *
- * Por que validar o JWT em vez de confiar no header: o Access só protege o
- * caminho que passa pelo Cloudflare. Quem bater direto no IP do VPS com o
- * Host correto chega no painel sem passar por lugar nenhum — e o painel tem
- * controle total do servidor de jogo. A validação do token fecha esse
- * bypass: sem um JWT assinado pelo Cloudflare, a requisição não entra.
+ * O painel tem controle total do servidor de jogo — inclusive `stop`. Então a
+ * regra aqui é falhar FECHADO: sem PANEL_PASSWORD configurada, nada passa. Um
+ * painel que sobe sem senha por engano é pior que um painel fora do ar.
+ *
+ * Basic Auth trafega a senha em cada requisição. Isso só é aceitável sobre
+ * HTTPS — que é o caso aqui, com Traefik e Cloudflare na frente. Em HTTP puro
+ * seria equivalente a não ter senha.
  */
 
-const teamDomain = process.env.CF_ACCESS_TEAM_DOMAIN;
-const audience = process.env.CF_ACCESS_AUD;
+const user = process.env.PANEL_USER?.trim() || 'admin';
+const password = process.env.PANEL_PASSWORD?.trim();
 
-const jwks = teamDomain
-  ? createRemoteJWKSet(new URL(`https://${teamDomain}/cdn-cgi/access/certs`))
-  : null;
+/**
+ * Bypass para desenvolvimento local, travado em duas condições simultâneas.
+ * A imagem de produção fixa NODE_ENV=production no Dockerfile, então isto é
+ * inalcançável em produção mesmo que a variável vaze para o painel do Coolify.
+ */
+const devBypass =
+  process.env.NODE_ENV !== 'production' && process.env.PANEL_DEV_BYPASS === 'true';
 
-function deny(motivo: string) {
-  return new NextResponse(`Acesso negado. ${motivo}`, {
+function pedirSenha(motivo: string) {
+  return new NextResponse(motivo, {
+    status: 401,
+    headers: {
+      // Faz o navegador abrir o popup nativo de usuário e senha.
+      'WWW-Authenticate': 'Basic realm="Painel do servidor", charset="UTF-8"',
+      'content-type': 'text/plain; charset=utf-8',
+    },
+  });
+}
+
+function recusar(motivo: string) {
+  return new NextResponse(motivo, {
     status: 403,
     headers: { 'content-type': 'text/plain; charset=utf-8' },
   });
 }
 
 /**
- * Bypass para desenvolvimento local.
+ * Compara via hash SHA-256 em vez de `===`.
  *
- * Travado em duas condicoes que precisam ser verdadeiras ao mesmo tempo. A
- * imagem de producao roda com NODE_ENV=production fixo no Dockerfile, entao
- * este bypass e inalcancavel em producao mesmo que a variavel escape para o
- * Coolify por acidente.
+ * Comparação de string sai no primeiro caractere diferente, e esse tempo é
+ * mensurável: dá para descobrir a senha caractere a caractere. Comparar
+ * digests de tamanho fixo, sem atalho, remove esse canal.
  */
-const devBypass =
-  process.env.NODE_ENV !== 'production' && process.env.PANEL_DEV_BYPASS === 'true';
+async function iguais(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [ha, hb] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ]);
+  const va = new Uint8Array(ha);
+  const vb = new Uint8Array(hb);
+  let diff = 0;
+  for (let i = 0; i < va.length; i++) diff |= va[i] ^ vb[i];
+  return diff === 0;
+}
 
 export async function middleware(req: NextRequest) {
   if (devBypass) return NextResponse.next();
 
-  if (!teamDomain || !audience || !jwks) {
-    return deny(
-      'O painel subiu sem CF_ACCESS_TEAM_DOMAIN ou CF_ACCESS_AUD. ' +
-        'Sem elas não há como verificar quem está entrando, então nada passa.',
+  if (!password) {
+    return recusar(
+      'O painel subiu sem PANEL_PASSWORD. Sem senha configurada nada passa — ' +
+        'defina a variável nas Environment Variables e faça redeploy.',
     );
   }
 
-  const token =
-    req.headers.get('cf-access-jwt-assertion') ??
-    req.cookies.get('CF_Authorization')?.value;
-
-  if (!token) {
-    return deny('A requisição não passou pelo Cloudflare Access.');
+  const header = req.headers.get('authorization');
+  if (!header?.startsWith('Basic ')) {
+    return pedirSenha('Autenticação necessária.');
   }
 
+  let decodificado: string;
   try {
-    await jwtVerify(token, jwks, {
-      issuer: `https://${teamDomain}`,
-      audience,
-    });
+    decodificado = atob(header.slice(6).trim());
   } catch {
-    return deny('Token do Cloudflare Access inválido ou expirado.');
+    return pedirSenha('Credenciais malformadas.');
+  }
+
+  // Só o primeiro `:` separa — senha pode conter dois-pontos.
+  const sep = decodificado.indexOf(':');
+  if (sep === -1) return pedirSenha('Credenciais malformadas.');
+
+  const [okUser, okPass] = await Promise.all([
+    iguais(decodificado.slice(0, sep), user),
+    iguais(decodificado.slice(sep + 1), password),
+  ]);
+
+  if (!okUser || !okPass) {
+    return pedirSenha('Usuário ou senha incorretos.');
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  // Tudo é protegido, inclusive as server actions (que são POST na própria rota).
+  // Protege tudo, inclusive as server actions (que são POST na própria rota).
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

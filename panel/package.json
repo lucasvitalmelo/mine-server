@@ -8,7 +8,6 @@
     "start": "next start"
   },
   "dependencies": {
-    "jose": "^5.9.6",
     "next": "^15.1.0",
     "rcon-client": "^4.2.5",
     "react": "^19.0.0",
