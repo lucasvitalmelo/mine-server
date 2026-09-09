@@ -10,17 +10,17 @@ describe('validarNick', () => {
     });
   });
 
-  it('aceita nick de Bedrock com prefixo e espaco no meio', () => {
-    expect(validarNick('.Gamer Tag')).toEqual({
+  it('aceita nick de Bedrock com prefixo', () => {
+    expect(validarNick('.Gamer_Tag')).toEqual({
       edicao: 'bedrock',
-      completo: '.Gamer Tag',
-      semPrefixo: 'Gamer Tag',
+      completo: '.Gamer_Tag',
+      semPrefixo: 'Gamer_Tag',
     });
   });
 
   it('tira espaco das pontas antes de validar', () => {
     expect(validarNick('  Lucas_Vital  ').completo).toBe('Lucas_Vital');
-    expect(validarNick(' .Gamer Tag ').semPrefixo).toBe('Gamer Tag');
+    expect(validarNick(' .Gamer_Tag ').semPrefixo).toBe('Gamer_Tag');
   });
 
   it('recusa nick de Java curto ou com caractere que o jogo nao aceita', () => {
@@ -29,8 +29,8 @@ describe('validarNick', () => {
     expect(() => validarNick('Lucas Vital')).toThrow(/nao e um nick valido/);
   });
 
-  it('recusa Bedrock com espaco duplo ou espaco colado no prefixo', () => {
-    expect(() => validarNick('.Gamer  Tag')).toThrow(/nick de Bedrock valido/);
+  it('recusa espaco no nick de Bedrock, porque quebraria o comando', () => {
+    expect(() => validarNick('.Gamer Tag')).toThrow(/nick de Bedrock valido/);
     expect(() => validarNick('. GamerTag')).toThrow(/nick de Bedrock valido/);
   });
 
@@ -55,19 +55,19 @@ describe('comandoWhitelist', () => {
   });
 
   it('no Bedrock usa fwhitelist e TIRA o prefixo', () => {
-    expect(comandoWhitelist(validarNick('.Gamer Tag'), 'add')).toBe(
-      'fwhitelist add Gamer Tag',
+    expect(comandoWhitelist(validarNick('.Gamer_Tag'), 'add')).toBe(
+      'fwhitelist add Gamer_Tag',
     );
-    expect(comandoWhitelist(validarNick('.Gamer Tag'), 'remove')).toBe(
-      'fwhitelist remove Gamer Tag',
+    expect(comandoWhitelist(validarNick('.Gamer_Tag'), 'remove')).toBe(
+      'fwhitelist remove Gamer_Tag',
     );
   });
 });
 
 describe('comandoKick', () => {
   it('MANTEM o prefixo do Bedrock, ao contrario do fwhitelist', () => {
-    expect(comandoKick(validarNick('.Gamer Tag'), 'Removido pelo painel')).toBe(
-      'kick .Gamer Tag Removido pelo painel',
+    expect(comandoKick(validarNick('.Gamer_Tag'), 'Removido pelo painel')).toBe(
+      'kick .Gamer_Tag Removido pelo painel',
     );
   });
 
@@ -75,5 +75,17 @@ describe('comandoKick', () => {
     expect(comandoKick(validarNick('Lucas_Vital'), 'Removido pelo painel')).toBe(
       'kick Lucas_Vital Removido pelo painel',
     );
+  });
+
+  it('o alvo do comando nunca tem espaco, senao o servidor le pela metade', () => {
+    const bedrock = validarNick('.Gamer_Tag');
+    const java = validarNick('Lucas_Vital');
+
+    // O alvo e o token seguinte ao nome do comando. Com espaco no meio, o
+    // servidor pega so o primeiro pedaco e nao acha ninguem.
+    expect(comandoKick(bedrock, 'Removido pelo painel').split(' ')[1]).toBe('.Gamer_Tag');
+    expect(comandoKick(java, 'Removido pelo painel').split(' ')[1]).toBe('Lucas_Vital');
+    expect(comandoWhitelist(bedrock, 'add').split(' ')[2]).toBe('Gamer_Tag');
+    expect(comandoWhitelist(java, 'add').split(' ')[2]).toBe('Lucas_Vital');
   });
 });
