@@ -53,7 +53,10 @@ export function validarNick(bruto: string): NickValidado {
   }
 
   if (!JAVA.test(valor)) {
-    throw new Error(`"${valor}" nao e um nick valido (3-16 letras, numeros ou _).`);
+    throw new Error(
+      `"${valor}" nao e um nick valido (3-16 letras, numeros ou _; jogadores de ` +
+        `Bedrock devem comecar com "." — ex.: .GamerTag).`,
+    );
   }
 
   return { edicao: 'java', completo: valor, semPrefixo: valor };

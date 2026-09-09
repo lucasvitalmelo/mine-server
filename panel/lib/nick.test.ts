@@ -30,17 +30,17 @@ describe('validarNick', () => {
   });
 
   it('recusa Bedrock com espaco duplo ou espaco colado no prefixo', () => {
-    expect(() => validarNick('.Gamer  Tag')).toThrow(/Bedrock/);
-    expect(() => validarNick('. GamerTag')).toThrow(/Bedrock/);
+    expect(() => validarNick('.Gamer  Tag')).toThrow(/nick de Bedrock valido/);
+    expect(() => validarNick('. GamerTag')).toThrow(/nick de Bedrock valido/);
   });
 
   it('recusa so o prefixo, ou prefixo com nome curto', () => {
-    expect(() => validarNick('.')).toThrow(/Bedrock/);
-    expect(() => validarNick('.ab')).toThrow(/Bedrock/);
+    expect(() => validarNick('.')).toThrow(/nick de Bedrock valido/);
+    expect(() => validarNick('.ab')).toThrow(/nick de Bedrock valido/);
   });
 
   it('recusa Bedrock com nome longo demais', () => {
-    expect(() => validarNick('.' + 'a'.repeat(17))).toThrow(/Bedrock/);
+    expect(() => validarNick('.' + 'a'.repeat(17))).toThrow(/nick de Bedrock valido/);
   });
 });
 
