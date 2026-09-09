@@ -705,10 +705,12 @@ MC_BEDROCK_PORT=19132
 - [ ] **Step 4: Validar o compose antes de qualquer deploy**
 
 ```bash
-cp .env.example .env.check && printf 'RCON_PASSWORD=x\nPANEL_PASSWORD=y\n' >> .env.check
-docker compose --env-file .env.check config | grep -B2 -A6 'published'
-rm .env.check
+chk=$(mktemp) && cat .env.example > "$chk" && printf 'RCON_PASSWORD=x\nPANEL_PASSWORD=y\n' >> "$chk"
+docker compose --env-file "$chk" config | grep -B2 -A6 'published'
+rm -f "$chk"
 ```
+
+O arquivo temporário fica **fora do repositório** de propósito. Uma versão anterior deste passo criava `.env.check` na raiz, e o `.gitignore` só cobre `.env` e `.env.local` — ou seja, um arquivo com senhas de mentira ficava a um `git add .` de ser comitado.
 
 Expected: aparecem as duas publicações — `25565` com `protocol: tcp` e `19132` com `protocol: udp`. Se o 19132 sair como `tcp`, o `/udp` do Step 1 não foi aplicado.
 
