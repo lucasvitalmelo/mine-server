@@ -4,7 +4,7 @@
 
 **Goal:** Deixar jogadores de Minecraft Bedrock (console, celular, Windows) entrarem no mesmo servidor Paper que os jogadores de Java já usam, sem quebrar o painel de administração.
 
-**Architecture:** Dois plugins entram no servidor Paper via a variável `PLUGINS` da imagem `itzg/minecraft-server`: o **Geyser** traduz pacotes de Bedrock para Java numa porta UDP separada, e o **Floodgate** deixa entrar quem não tem conta Java. Como o Floodgate prefixa o nick de Bedrock com `.` e preserva espaços, o painel Next.js passa a ter duas gramáticas de nome ao mesmo tempo — então a validação e o roteamento de comando saem de `actions.ts` para um módulo próprio com testes.
+**Architecture:** Dois plugins entram no servidor Paper via a variável `PLUGINS` da imagem `itzg/minecraft-server`: o **Geyser** traduz pacotes de Bedrock para Java numa porta UDP separada, e o **Floodgate** deixa entrar quem não tem conta Java. Como o Floodgate prefixa o nick de Bedrock com `.`, o painel Next.js passa a ter duas gramáticas de nome ao mesmo tempo — então a validação e o roteamento de comando saem de `actions.ts` para um módulo próprio com testes.
 
 **Tech Stack:** Docker Compose · itzg/minecraft-server (Paper) · Geyser-Spigot · Floodgate · Next.js 15 App Router · TypeScript · Vitest
 
@@ -26,7 +26,7 @@ Confirmados por pesquisa antes de escrever o plano. Se algum mudar, o plano muda
 | Geyser aceita Bedrock | 26.0 – 26.45 | Cliente de console se atualiza sozinho |
 | MC 26.3 | lançando em setembro/2026 | `MC_VERSION=LATEST` quebraria o Bedrock em dias |
 | Prefixo do Floodgate | `.` (default) | Decisão: **manter**. Deixa óbvio quem é de Bedrock |
-| `replace-spaces` do Floodgate | `false` (default) | Nick de Bedrock **tem espaço**: `.Gamer Tag` |
+| `replace-spaces` do Floodgate | **ligar** (default é `false`) | Sem isso o nick tem espaço e o `kick` quebra — ver Correção abaixo |
 | `fwhitelist` | quer o nick **SEM** o prefixo | A wiki é explícita: "The username prefix doesn't need to be included" |
 | `kick` | quer o nick **COM** o prefixo | Duas regras para a mesma string — a fonte de bug mais provável aqui |
 | Porta Bedrock | 19132 **UDP** | O `ports:` de hoje só publica TCP |
@@ -38,6 +38,28 @@ Confirmados por pesquisa antes de escrever o plano. Se algum mudar, o plano muda
 1. **Manter o prefixo `.`** e adaptar o painel (em vez de zerar o prefixo).
 2. **Fixar `MC_VERSION`** em 26.2 (em vez de manter `LATEST`).
 3. **O painel roteia para `fwhitelist`** automaticamente (em vez de exigir o console).
+4. **Ligar `replace-spaces`** no Floodgate (decidido durante a execução — ver Correção abaixo).
+
+## Correção aplicada durante a execução
+
+O plano original aceitava espaço em nick de Bedrock, porque o `replace-spaces` do Floodgate vem desligado e gamertag de Xbox tem espaço. **Isso estava errado e a revisão de código pegou.**
+
+O comando do jogo é `kick <alvo> [<motivo>]` e separa argumentos por espaço, sem aceitar aspas em nome de jogador. Um nick `.Gamer Tag` produziria:
+
+```
+kick .Gamer Tag Removido pelo painel
+```
+
+O servidor procuraria o jogador `.Gamer` com motivo `Tag Removido pelo painel`. Ninguém é expulso e **nenhum erro é levantado** — exatamente a falha silenciosa que o módulo existe para evitar. Também derrubaria o critério de aceite da Task 9 Step 4.
+
+**Decisão:** ligar `replace-spaces` no Floodgate, então `Gamer Tag` chega como `.Gamer_Tag`. O prefixo `.` continua (é outra configuração). Consequências, todas já aplicadas:
+
+- `panel/lib/nick.ts` recusa espaço; os regex `JAVA` e `GAMERTAG` colapsaram no único `NOME = /^[A-Za-z0-9_]{3,16}$/`, já que sem espaço as duas gramáticas viram a mesma.
+- A suíte foi de 11 para 12 testes. O décimo segundo é guarda de regressão: verifica que o alvo do comando nunca contém espaço.
+- A Task 7 ganhou um passo para o config do Floodgate.
+- Commits: `520479c` (gramática) e `c3b36d7` (mensagem de erro citando o prefixo).
+
+**Os blocos de código da Task 2 abaixo são o texto original do plano e foram superados por `520479c`.** Ficam como registro; o estado real do módulo é o do commit.
 
 ## Estrutura de arquivos
 
@@ -738,13 +760,34 @@ Se o comando disser que o arquivo não existe, o servidor ainda não terminou de
 docker exec $(docker ps -qf name=minecraft) sed -i 's/^auth-type: .*/auth-type: floodgate/' /data/plugins/Geyser-Spigot/config.yml
 ```
 
-- [ ] **Step 5: Confirmar a troca, e só então reiniciar**
+- [ ] **Step 4b: Ligar o `replace-spaces` do Floodgate**
+
+Este é outro arquivo, de outro plugin. Sem isso, a gamertag `Gamer Tag` entra como `.Gamer Tag` e o `kick` do painel procura um jogador chamado `.Gamer` — não expulsa ninguém e não dá erro. O painel já recusa nick com espaço (`panel/lib/nick.ts`), então sem este passo o × simplesmente não funciona para esses jogadores.
+
+Veja o valor atual:
+
+```bash
+docker exec $(docker ps -qf name=minecraft) grep -n 'replace-spaces' /data/plugins/floodgate/config.yml
+```
+
+Expected: `replace-spaces: false` — o default.
+
+Troque:
+
+```bash
+docker exec $(docker ps -qf name=minecraft) sed -i 's/^replace-spaces: .*/replace-spaces: true/' /data/plugins/floodgate/config.yml
+```
+
+Se o `grep` não achar o arquivo, confirme o nome da pasta com `docker exec $(docker ps -qf name=minecraft) ls /data/plugins` — dependendo da build, o Floodgate cria `floodgate/` ou `Floodgate/`.
+
+- [ ] **Step 5: Confirmar as duas trocas, e só então reiniciar**
 
 ```bash
 docker exec $(docker ps -qf name=minecraft) grep -n '^auth-type' /data/plugins/Geyser-Spigot/config.yml
+docker exec $(docker ps -qf name=minecraft) grep -n 'replace-spaces' /data/plugins/floodgate/config.yml
 ```
 
-Expected: `auth-type: floodgate`.
+Expected: `auth-type: floodgate` e `replace-spaces: true`. As duas, antes de reiniciar.
 
 Confirmado, reinicie pelo botão Restart do Coolify ou:
 
@@ -852,16 +895,21 @@ No jogo: Servidores → Adicionar servidor, IP do VPS, **porta 19132**.
 ### O nick de quem entra pelo Bedrock tem um ponto na frente
 
 O Floodgate prefixa o nome com `.` para não colidir com um jogador de Java de
-mesmo nome, e mantém os espaços da gamertag. Então `Gamer Tag` no Xbox aparece
-como `.Gamer Tag` no servidor.
+mesmo nome. E como o `replace-spaces` está ligado neste servidor, espaço da
+gamertag vira `_`: `Gamer Tag` no Xbox aparece como `.Gamer_Tag` no servidor.
+
+Espaço fica de fora porque o comando do jogo é `kick <alvo> [<motivo>]` e ele
+separa os argumentos por espaço, sem aceitar aspas em nome de jogador. Um nick
+com espaço faria o servidor procurar só o primeiro pedaço, sem expulsar ninguém
+e sem dar erro.
 
 Isso muda os comandos, e o painel já trata a diferença sozinho
 (`panel/lib/nick.ts`):
 
 | Ação | Java | Bedrock |
 |---|---|---|
-| Liberar na whitelist | `whitelist add Nick` | `fwhitelist add Gamer Tag` (**sem** o ponto) |
-| Expulsar | `kick Nick` | `kick .Gamer Tag` (**com** o ponto) |
+| Liberar na whitelist | `whitelist add Nick` | `fwhitelist add Gamer_Tag` (**sem** o ponto) |
+| Expulsar | `kick Nick` | `kick .Gamer_Tag` (**com** o ponto) |
 
 Se for digitar no campo de Console do painel, respeite a coluna certa: o
 comando errado não dá erro, só volta "player not found".
