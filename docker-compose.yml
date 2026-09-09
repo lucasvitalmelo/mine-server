@@ -15,17 +15,40 @@ services:
     tty: true
     stdin_open: true
 
-    # Minecraft Java é TCP bruto, NÃO é HTTP — não passa pelo Traefik do
-    # Coolify. Deixe o campo de domínio VAZIO no Coolify e libere a porta
-    # no firewall do VPS: sudo ufw allow 25565/tcp
+    # Minecraft não é HTTP — não passa pelo Traefik do Coolify. Deixe o campo
+    # de domínio VAZIO no Coolify e libere as portas no firewall do PROVEDOR
+    # (na Hostinger: VPS -> Firewall). `ufw` no VPS é inócuo aqui: o Docker
+    # escreve na chain DOCKER do iptables e passa por cima dele.
     ports:
+      # Java: TCP.
       - "${MC_PORT:-25565}:25565"
+      # Bedrock: UDP, e a porta é outra. Sem o `/udp` aqui o cliente de
+      # Bedrock não lista nem conecta — e não dá mensagem de erro que ajude.
+      - "${MC_BEDROCK_PORT:-19132}:19132/udp"
 
     environment:
       # --- Obrigatório ---------------------------------------------------
       EULA: "TRUE"
       TYPE: "PAPER"
-      VERSION: "${MC_VERSION:-LATEST}"
+      VERSION: "${MC_VERSION:-26.2}"
+
+      # --- Crossplay com Bedrock -----------------------------------------
+      # Geyser traduz os pacotes de Bedrock para Java. Floodgate deixa
+      # entrar quem NÃO tem conta Java — console e celular. Sem o Floodgate,
+      # o Geyser sozinho só aceita quem também comprou o Java, o que exclui
+      # quase todo mundo que você quer convidar.
+      #
+      # Os dois ficam em `latest` de propósito, ao contrário do Paper: o
+      # cliente de Bedrock se atualiza sozinho no console, então o Geyser
+      # precisa acompanhar. É o Paper que fica preso em 26.2, porque é essa
+      # a versão de cliente Java que o Geyser emula.
+      #
+      # O `auth-type` do Geyser e o `replace-spaces` do Floodgate ainda
+      # precisam ir para `floodgate` e `true` na mão, uma vez, depois do
+      # primeiro boot. Ver Task 7 do plano e o README.
+      PLUGINS: |
+        https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot
+        https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot
 
       # --- Memória -------------------------------------------------------
       # MC_MAX_MEMORY deve ficar em ~75% de MC_MEM_LIMIT. Metaspace, buffers
