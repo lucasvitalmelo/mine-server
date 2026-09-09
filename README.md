@@ -101,8 +101,10 @@ No cliente Minecraft Java, **Multijogador → Adicionar servidor**:
 IP_DO_SEU_VPS:25565
 ```
 
-A versão do cliente precisa bater com a do servidor. Com `MC_VERSION=LATEST`,
-descubra qual subiu:
+A versão do cliente precisa bater com a do servidor. Este servidor fixa
+`MC_VERSION=26.2` de propósito — é a versão de cliente Java que o Geyser sabe
+emular, então não é só o Java que depende disso (ver "A versão do Paper está
+fixa por causa disto" mais abaixo). Para confirmar o que realmente subiu:
 
 ```bash
 docker logs $(docker ps -qf name=minecraft) 2>&1 | grep -i "version"
@@ -161,13 +163,8 @@ autenticar, é isto: precisa ser `floodgate`, não `online`.
 
 O `auth-type` do Geyser e o `replace-spaces` do Floodgate vivem dentro do
 volume `minecraft-data` e voltam ao padrão de fábrica se o volume for
-recriado. Para reaplicar os dois:
-
-```bash
-docker exec $(docker ps -qf name=minecraft) sed -i 's/^auth-type: .*/auth-type: floodgate/' /data/plugins/Geyser-Spigot/config.yml
-docker exec $(docker ps -qf name=minecraft) sed -i 's/^replace-spaces: .*/replace-spaces: true/' /data/plugins/floodgate/config.yml
-docker restart $(docker ps -qf name=minecraft)
-```
+recriado. Repita o bloco de configuração obrigatória da seção "Bedrock no
+mesmo servidor", mais abaixo.
 
 ### Domínio no lugar do IP (opcional)
 
@@ -197,6 +194,31 @@ O servidor aceita as duas edições através do [Geyser](https://geysermc.org/)
 Floodgate (deixa entrar quem não tem conta Java). Funciona em console,
 celular e Windows.
 
+### Configuração obrigatória, uma vez, depois do primeiro boot
+
+Sem isto a autenticação do Bedrock falha sempre: o servidor até aparece na
+lista de servidores, mas nenhuma conexão passa do handshake. Não dá para
+declarar isto no `docker-compose.yml` — os arquivos de configuração do Geyser
+e do Floodgate só existem depois que o servidor sobe pela primeira vez, então
+não há nada para editar antes disso.
+
+Rode uma vez, depois que o primeiro deploy terminar de subir, e de novo
+sempre que o volume `minecraft-data` for recriado:
+
+```bash
+docker exec $(docker ps -qf name=minecraft) sed -i 's/^auth-type: .*/auth-type: floodgate/' /data/plugins/Geyser-Spigot/config.yml
+docker exec $(docker ps -qf name=minecraft) sed -i 's/^replace-spaces: .*/replace-spaces: true/' /data/plugins/floodgate/config.yml
+docker restart $(docker ps -qf name=minecraft)
+```
+
+- **`auth-type: floodgate`** — é o que deixa entrar quem não tem conta Java.
+  Sem isto o Geyser fica no padrão `online`, que exige a mesma conta
+  Microsoft/Mojang do Java, e a conexão do Bedrock morre na autenticação.
+- **`replace-spaces: true`** — troca espaço da gamertag por `_`. O comando do
+  jogo separa argumentos por espaço e não aceita aspas em nome de jogador,
+  então um nick com espaço faz o `kick` procurar o jogador errado e falhar em
+  silêncio.
+
 Para conectar: Servidores → Adicionar servidor, IP do VPS, **porta 19132**.
 
 ### O nick de quem entra pelo Bedrock tem um ponto na frente
@@ -222,6 +244,14 @@ O painel resolve isso sozinho — `panel/lib/nick.ts` escolhe o comando certo
 pela edição do jogador. Só importa digitar à mão no Console livre do painel:
 use a coluna certa. O comando errado não dá erro, devolve "player not
 found", e parece que o nick está errado quando o problema é só o ponto.
+
+O `fwhitelist` do Floodgate grava no mesmo `whitelist.json` que o `whitelist`
+do Java lê e escreve — só que com o nome prefixado, então `whitelist list`
+devolve `.Gamer_Tag`. A alternativa manual documentada pelo Floodgate,
+`/whitelist add ".Gamer_Tag"` com o ponto, confirma que é o nome prefixado que
+fica salvo no arquivo. É por isso que o botão × do painel funciona sem lógica
+extra: ele lê `.Gamer_Tag` da lista, `validarNick` reconhece o ponto como
+Bedrock, e o botão chama `fwhitelist remove`.
 
 ### A versão do Paper está fixa por causa disto
 

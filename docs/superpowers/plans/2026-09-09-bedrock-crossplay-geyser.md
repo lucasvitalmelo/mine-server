@@ -61,6 +61,18 @@ O servidor procuraria o jogador `.Gamer` com motivo `Tag Removido pelo painel`. 
 
 **Os blocos de código da Task 2 abaixo são o texto original do plano e foram superados por `520479c`.** Ficam como registro; o estado real do módulo é o do commit.
 
+## Situação
+
+Tasks 1, 2, 3, 4, 5, 6 e 8 executadas na branch `feat/bedrock-crossplay` (11
+commits). O conteúdo da Task 8 Step 2 e Step 3 foi estendido depois da
+execução — a revisão final do README acrescentou o bloco de configuração
+obrigatória (`auth-type` e `replace-spaces`) que faltava na seção "Bedrock no
+mesmo servidor".
+
+Tasks 7 e 9 **não foram executadas**: ambas rodam contra o VPS ao vivo (`docker
+exec`, o painel de firewall da Hostinger) e clientes reais do jogo, fora do
+alcance desta sessão. Ficam abertas para quando o deploy acontecer de fato.
+
 ## Estrutura de arquivos
 
 | Arquivo | Responsabilidade |
@@ -85,13 +97,13 @@ O painel não tem nenhum teste hoje. Vale a exceção porque as Tasks 2 e 3 intr
 **Files:**
 - Modify: `panel/package.json:5-9` (scripts) e `panel/package.json:16-21` (devDependencies)
 
-- [ ] **Step 1: Instalar o vitest**
+- [x] **Step 1: Instalar o vitest**
 
 ```bash
 cd panel && npm install -D vitest
 ```
 
-- [ ] **Step 2: Adicionar o script `test`**
+- [x] **Step 2: Adicionar o script `test`**
 
 Em `panel/package.json`, o bloco `scripts` passa de:
 
@@ -114,17 +126,17 @@ para:
   },
 ```
 
-- [ ] **Step 3: Verificar que o runner sobe sem teste nenhum**
+- [x] **Step 3: Verificar que o runner sobe sem teste nenhum**
 
 Run: `cd panel && npm test`
 Expected: sai com "No test files found" e código de saída diferente de 0. É o estado esperado antes da Task 2 — confirma que o vitest está instalado e procurando.
 
-- [ ] **Step 4: Confirmar que a produção não foi afetada**
+- [x] **Step 4: Confirmar que a produção não foi afetada**
 
 Run: `cd panel && grep -n 'vitest' package.json && grep -n 'npm ci' Dockerfile`
 Expected: `vitest` aparece dentro de `devDependencies`, e o `npm ci` do Dockerfile está na linha 6, no estágio `builder`. O estágio `runner` (linhas 11-20) não roda `npm`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add panel/package.json panel/package-lock.json
@@ -139,7 +151,7 @@ git commit -m "chore: adicionar vitest ao painel"
 - Create: `panel/lib/nick.ts`
 - Test: `panel/lib/nick.test.ts`
 
-- [ ] **Step 1: Escrever os testes que falham**
+- [x] **Step 1: Escrever os testes que falham**
 
 Crie `panel/lib/nick.test.ts`:
 
@@ -225,12 +237,12 @@ describe('comandoKick', () => {
 });
 ```
 
-- [ ] **Step 2: Rodar e confirmar que falha**
+- [x] **Step 2: Rodar e confirmar que falha**
 
 Run: `cd panel && npm test`
 Expected: FAIL — "Failed to resolve import './nick'". O arquivo ainda não existe.
 
-- [ ] **Step 3: Escrever a implementação mínima**
+- [x] **Step 3: Escrever a implementação mínima**
 
 Crie `panel/lib/nick.ts`. As mensagens de erro vão sem acento, seguindo o padrão de `lib/props.ts` e `lib/rcon.ts`:
 
@@ -307,17 +319,17 @@ export function comandoKick(n: NickValidado, motivo: string): string {
 }
 ```
 
-- [ ] **Step 4: Rodar e confirmar que passa**
+- [x] **Step 4: Rodar e confirmar que passa**
 
 Run: `cd panel && npm test`
 Expected: PASS — 11 testes em 3 suítes.
 
-- [ ] **Step 5: Confirmar que os tipos fecham**
+- [x] **Step 5: Confirmar que os tipos fecham**
 
 Run: `cd panel && npx tsc --noEmit`
 Expected: sem saída, exit 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add panel/lib/nick.ts panel/lib/nick.test.ts
@@ -333,7 +345,7 @@ Sem esta task, o primeiro jogador de Bedrock que aparecer na tela derruba o pain
 **Files:**
 - Modify: `panel/app/actions.ts:1-18` (imports e helper) e `panel/app/actions.ts:26-73` (as ações)
 
-- [ ] **Step 1: Trocar o topo do arquivo**
+- [x] **Step 1: Trocar o topo do arquivo**
 
 Em `panel/app/actions.ts`, as linhas 1-18 passam de:
 
@@ -383,7 +395,7 @@ function nick(formData: FormData, campo = 'nick'): NickValidado {
 }
 ```
 
-- [ ] **Step 2: Trocar `addWhitelist`**
+- [x] **Step 2: Trocar `addWhitelist`**
 
 O bloco das linhas 26-36 passa de:
 
@@ -418,7 +430,7 @@ export async function addWhitelist(_prev: Resultado | null, formData: FormData):
 
 O sufixo `(Bedrock)` não é enfeite: é a confirmação visível de que o painel roteou para `fwhitelist`, e é o que a Task 9 Step 5 verifica.
 
-- [ ] **Step 3: Trocar `removeWhitelist` e `kick`**
+- [x] **Step 3: Trocar `removeWhitelist` e `kick`**
 
 O bloco das linhas 61-73 passa de:
 
@@ -462,17 +474,17 @@ export async function kick(formData: FormData) {
 
 `setWhitelist` não muda: `whitelist on|off` é estado global do servidor e não recebe nick.
 
-- [ ] **Step 4: Confirmar que não sobrou nick interpolado na mão**
+- [x] **Step 4: Confirmar que não sobrou nick interpolado na mão**
 
 Run: `cd panel && grep -n 'whitelist add\|whitelist remove\|kick ' app/actions.ts`
 Expected: nenhuma linha. As três montagens agora vêm de `lib/nick.ts`. Se aparecer alguma, um dos passos acima não foi aplicado.
 
-- [ ] **Step 5: Confirmar tipos e testes**
+- [x] **Step 5: Confirmar tipos e testes**
 
 Run: `cd panel && npx tsc --noEmit && npm test`
 Expected: `tsc` sem saída (exit 0) e os 11 testes passando.
 
-- [ ] **Step 6: Ver a tela de pé com RCON simulado**
+- [x] **Step 6: Ver a tela de pé com RCON simulado**
 
 ```bash
 cd panel && PANEL_DEV_BYPASS=true PANEL_DEV_FAKE_RCON=true npm run dev
@@ -481,7 +493,7 @@ cd panel && PANEL_DEV_BYPASS=true PANEL_DEV_FAKE_RCON=true npm run dev
 Abra `http://localhost:3000`.
 Expected: o painel renderiza e "Quem está online" mostra `LucasVital` e `AmigoDaLive` (vêm de `lib/rcon.ts:29`), sem erro no console do navegador. Encerre com Ctrl+C.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add panel/app/actions.ts
@@ -497,7 +509,7 @@ git commit -m "feat: painel roteia whitelist e kick por edicao do jogador"
 **Files:**
 - Create: `panel/app/error.tsx`
 
-- [ ] **Step 1: Criar o error boundary**
+- [x] **Step 1: Criar o error boundary**
 
 Crie `panel/app/error.tsx`:
 
@@ -542,12 +554,12 @@ export default function Erro({
 }
 ```
 
-- [ ] **Step 2: Confirmar que os tipos fecham**
+- [x] **Step 2: Confirmar que os tipos fecham**
 
 Run: `cd panel && npx tsc --noEmit`
 Expected: sem saída, exit 0.
 
-- [ ] **Step 3: Ver o boundary funcionando**
+- [x] **Step 3: Ver o boundary funcionando**
 
 ```bash
 cd panel && PANEL_DEV_BYPASS=true npm run dev
@@ -558,7 +570,7 @@ cd panel && PANEL_DEV_BYPASS=true npm run dev
 Abra `http://localhost:3000` e clique em "Salvar o mundo agora".
 Expected: aparece "O painel tropecou" com a mensagem "RCON_PASSWORD não está definida no painel.", e "Tentar de novo" volta para o painel. Encerre com Ctrl+C.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add panel/app/error.tsx
@@ -574,7 +586,7 @@ O Geyser emula um cliente Java **26.2**, e o MC **26.3** sai neste mês. Com `MC
 **Files:**
 - Modify: `.env.example:44-55`
 
-- [ ] **Step 1: Trocar o bloco de versão**
+- [x] **Step 1: Trocar o bloco de versão**
 
 Em `.env.example`, as linhas 44-55 passam de:
 
@@ -611,14 +623,14 @@ para:
 MC_VERSION=26.2
 ```
 
-- [ ] **Step 2: Confirmar que a tag do Java continua compatível**
+- [x] **Step 2: Confirmar que a tag do Java continua compatível**
 
 Run: `grep -n 'MC_IMAGE_TAG' .env.example`
 Expected: `MC_IMAGE_TAG=java25`. O Geyser pede Java 21+ e o MC 26.2 pede Java 25, então `java25` atende aos dois.
 
 **Se este valor não for `java25`, pare aqui** e corrija antes de seguir — MC 26.2 em Java velho entra em loop de restart sem nunca abrir a porta.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .env.example
@@ -633,7 +645,7 @@ git commit -m "chore: fixar MC_VERSION em 26.2 por causa do Geyser"
 - Modify: `docker-compose.yml:18-30` (ports e início do environment)
 - Modify: `.env.example:62-67` (bloco de porta)
 
-- [ ] **Step 1: Publicar a porta UDP**
+- [x] **Step 1: Publicar a porta UDP**
 
 Em `docker-compose.yml`, as linhas 18-22 passam de:
 
@@ -662,7 +674,7 @@ para:
 
 O comentário antigo mandava `ufw allow 25565/tcp`, contradizendo o próprio README:57 que chama isso de inócuo. O texto novo resolve a contradição.
 
-- [ ] **Step 2: Fixar a versão e adicionar os plugins**
+- [x] **Step 2: Fixar a versão e adicionar os plugins**
 
 Em `docker-compose.yml`, a linha `VERSION: "${MC_VERSION:-LATEST}"` passa a:
 
@@ -691,7 +703,7 @@ E logo depois dela, insira:
         https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot
 ```
 
-- [ ] **Step 3: Documentar a porta nova**
+- [x] **Step 3: Documentar a porta nova**
 
 Em `.env.example`, depois da linha `MC_PORT=25565`, insira:
 
@@ -702,7 +714,7 @@ Em `.env.example`, depois da linha `MC_PORT=25565`, insira:
 MC_BEDROCK_PORT=19132
 ```
 
-- [ ] **Step 4: Validar o compose antes de qualquer deploy**
+- [x] **Step 4: Validar o compose antes de qualquer deploy**
 
 ```bash
 chk=$(mktemp) && cat .env.example > "$chk" && printf 'RCON_PASSWORD=x\nPANEL_PASSWORD=y\n' >> "$chk"
@@ -716,7 +728,7 @@ Expected: aparecem as duas publicações — `25565` com `protocol: tcp` e `1913
 
 Preenchemos `RCON_PASSWORD` e `PANEL_PASSWORD` no arquivo temporário porque o compose usa `${VAR:?}` nas duas e a interpolação falha com valor vazio. Isso é um achado da revisão que **este plano não corrige** — só contorna para validar.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docker-compose.yml .env.example
@@ -822,7 +834,7 @@ Não use `ufw`: como o README:57 explica, portas publicadas pelo Docker escrevem
 - Modify: `README.md:53-55` (passo do firewall)
 - Modify: `README.md` (nova seção depois de "Não consigo conectar", que termina na linha 116)
 
-- [ ] **Step 1: Incluir a porta UDP no passo do firewall**
+- [x] **Step 1: Incluir a porta UDP no passo do firewall**
 
 Em `README.md`, as linhas 53-55 passam de:
 
@@ -847,7 +859,7 @@ Duas regras, porque as duas edições do jogo usam protocolos diferentes:
 Na Hostinger: VPS → Firewall → uma regra para cada linha da tabela.
 ```
 
-- [ ] **Step 2: Acrescentar o diagnóstico de UDP**
+- [x] **Step 2: Acrescentar o diagnóstico de UDP**
 
 Em `README.md`, depois da linha 116 (a que termina em "Investigue com `docker ps -a` e `docker logs $(docker ps -aqf name=minecraft)`."), insira o texto abaixo. Ele contém blocos de código, então está delimitado aqui com quatro backticks — escreva no README apenas o conteúdo interno, com os três backticks normais:
 
@@ -881,7 +893,7 @@ docker restart $(docker ps -qf name=minecraft)
 ```
 ````
 
-- [ ] **Step 3: Documentar como o Bedrock conecta e o prefixo do nick**
+- [x] **Step 3: Documentar como o Bedrock conecta e o prefixo do nick**
 
 Em `README.md`, depois da seção criada no Step 2, insira (mesma convenção: escreva com três backticks):
 
@@ -925,12 +937,12 @@ versão nova. Para atualizar, veja qual Java o Geyser emula em
 mude os dois juntos.
 ````
 
-- [ ] **Step 4: Conferir que o README não ficou se contradizendo**
+- [x] **Step 4: Conferir que o README não ficou se contradizendo**
 
 Run: `grep -n 'ufw allow' README.md docker-compose.yml`
 Expected: nenhuma linha manda rodar `ufw allow` como se resolvesse. O que sobrar deve ser só a explicação de por que é inócuo (README:57).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md
