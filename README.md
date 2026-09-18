@@ -50,9 +50,16 @@ nada.
 openssl rand -base64 24
 ```
 
-**5. Libere a porta 25565/TCP no firewall do painel do provedor.**
+**5. Libere as portas no firewall do painel do provedor.**
 
-Na Hostinger: VPS → Firewall → nova regra, TCP, porta 25565.
+Duas regras, porque as duas edições do jogo usam protocolos diferentes:
+
+| Edição | Porta | Protocolo |
+|---|---|---|
+| Java | 25565 | TCP |
+| Bedrock | 19132 | **UDP** |
+
+Na Hostinger: VPS → Firewall → uma regra para cada linha da tabela.
 
 Note que `ufw allow 25565/tcp` no VPS é, na prática, **inócuo**: portas
 publicadas pelo Docker escrevem regras de iptables na chain `DOCKER`, que
@@ -94,8 +101,10 @@ No cliente Minecraft Java, **Multijogador → Adicionar servidor**:
 IP_DO_SEU_VPS:25565
 ```
 
-A versão do cliente precisa bater com a do servidor. Com `MC_VERSION=LATEST`,
-descubra qual subiu:
+A versão do cliente precisa bater com a do servidor. Este servidor fixa
+`MC_VERSION=26.2` de propósito — é a versão de cliente Java que o Geyser sabe
+emular, então não é só o Java que depende disso (ver "A versão do Paper está
+fixa por causa disto" mais abaixo). Para confirmar o que realmente subiu:
 
 ```bash
 docker logs $(docker ps -qf name=minecraft) 2>&1 | grep -i "version"
@@ -122,6 +131,41 @@ Se estiver escutando e a porta liberada no painel, o próximo suspeito é
 incompatibilidade de versão do cliente — o erro no jogo diz qual versão o
 servidor espera.
 
+### Java conecta, Bedrock não
+
+O comando acima é `-t` (TCP). Bedrock usa outro protocolo, então o diagnóstico
+muda — copiar o comando do Java para cá dá falso negativo e manda você caçar
+um container saudável:
+
+```bash
+sudo ss -ulnp | grep 19132
+```
+
+Repare no `-u` (UDP) no lugar do `-t`.
+
+- **Aparece algo escutando** → o Geyser subiu. O bloqueio está em outro
+  lugar: a regra de UDP no firewall do painel do provedor, ou o `auth-type`
+  do Geyser não está `floodgate`.
+- **Não aparece nada** → o Geyser não carregou. Veja o log do plugin:
+
+```bash
+docker logs $(docker ps -qf name=minecraft) 2>&1 | grep -i geyser
+```
+
+Para conferir o `auth-type`:
+
+```bash
+docker exec $(docker ps -qf name=minecraft) grep '^auth-type' /data/plugins/Geyser-Spigot/config.yml
+```
+
+Se o servidor aparece na lista do Bedrock mas a conexão morre na hora de
+autenticar, é isto: precisa ser `floodgate`, não `online`.
+
+O `auth-type` do Geyser e o `replace-spaces` do Floodgate vivem dentro do
+volume `minecraft-data` e voltam ao padrão de fábrica se o volume for
+recriado. Repita o bloco de configuração obrigatória da seção "Bedrock no
+mesmo servidor", mais abaixo.
+
 ### Domínio no lugar do IP (opcional)
 
 Crie um registro DNS **A**:
@@ -140,6 +184,85 @@ Para dispensar o `:25565`, adicione também um registro **SRV**:
 | Nome | `_minecraft._tcp.mc` |
 | Prioridade / Peso / Porta | `0` / `5` / `25565` |
 | Alvo | `mc.seudominio.com` |
+
+---
+
+## Bedrock no mesmo servidor
+
+O servidor aceita as duas edições através do [Geyser](https://geysermc.org/)
+(traduz o protocolo Bedrock para o protocolo Java em tempo real) e do
+Floodgate (deixa entrar quem não tem conta Java). Funciona em console,
+celular e Windows.
+
+### Configuração obrigatória, uma vez, depois do primeiro boot
+
+Sem isto a autenticação do Bedrock falha sempre: o servidor até aparece na
+lista de servidores, mas nenhuma conexão passa do handshake. Não dá para
+declarar isto no `docker-compose.yml` — os arquivos de configuração do Geyser
+e do Floodgate só existem depois que o servidor sobe pela primeira vez, então
+não há nada para editar antes disso.
+
+Rode uma vez, depois que o primeiro deploy terminar de subir, e de novo
+sempre que o volume `minecraft-data` for recriado:
+
+```bash
+docker exec $(docker ps -qf name=minecraft) sed -i 's/^auth-type: .*/auth-type: floodgate/' /data/plugins/Geyser-Spigot/config.yml
+docker exec $(docker ps -qf name=minecraft) sed -i 's/^replace-spaces: .*/replace-spaces: true/' /data/plugins/floodgate/config.yml
+docker restart $(docker ps -qf name=minecraft)
+```
+
+- **`auth-type: floodgate`** — é o que deixa entrar quem não tem conta Java.
+  Sem isto o Geyser fica no padrão `online`, que exige a mesma conta
+  Microsoft/Mojang do Java, e a conexão do Bedrock morre na autenticação.
+- **`replace-spaces: true`** — troca espaço da gamertag por `_`. O comando do
+  jogo separa argumentos por espaço e não aceita aspas em nome de jogador,
+  então um nick com espaço faz o `kick` procurar o jogador errado e falhar em
+  silêncio.
+
+Para conectar: Servidores → Adicionar servidor, IP do VPS, **porta 19132**.
+
+### O nick de quem entra pelo Bedrock tem um ponto na frente
+
+O Floodgate prefixa o nome com `.` para não colidir com um jogador Java que
+já use o mesmo nome — `.` não é um caractere válido em nick Java, então a
+chance de colisão é zero. Como este servidor está com `replace-spaces`
+ligado, espaço do gamertag vira `_`. Um Bedrock chamado `Gamer Tag` chega ao
+servidor como `.Gamer_Tag`.
+
+O espaço some por um motivo concreto: `/kick <alvo> [<motivo>]` separa os
+argumentos por espaço, sem aspas para nome de jogador. Um nick com espaço
+faria o servidor procurar o jogador errado e falhar em silêncio.
+
+Isso muda o comando conforme a edição:
+
+| Ação | Java | Bedrock |
+|---|---|---|
+| Liberar na whitelist | `whitelist add Nick` | `fwhitelist add Gamer_Tag` (**sem** o ponto) |
+| Expulsar | `kick Nick` | `kick .Gamer_Tag` (**com** o ponto) |
+
+O painel resolve isso sozinho — `panel/lib/nick.ts` escolhe o comando certo
+pela edição do jogador. Só importa digitar à mão no Console livre do painel:
+use a coluna certa. O comando errado não dá erro, devolve "player not
+found", e parece que o nick está errado quando o problema é só o ponto.
+
+O `fwhitelist` do Floodgate grava no mesmo `whitelist.json` que o `whitelist`
+do Java lê e escreve — só que com o nome prefixado, então `whitelist list`
+devolve `.Gamer_Tag`. A alternativa manual documentada pelo Floodgate,
+`/whitelist add ".Gamer_Tag"` com o ponto, confirma que é o nome prefixado que
+fica salvo no arquivo. É por isso que o botão × do painel funciona sem lógica
+extra: ele lê `.Gamer_Tag` da lista, `validarNick` reconhece o ponto como
+Bedrock, e o botão chama `fwhitelist remove`.
+
+### A versão do Paper está fixa por causa disto
+
+`MC_VERSION=26.2` não é a versão mais recente por acaso: é a versão de
+cliente Java que o Geyser sabe emular. Voltar para `MC_VERSION=LATEST` quebra
+o Bedrock no próximo redeploy que pegar uma versão mais nova — o Java
+continua conectando, o Geyser é que para de traduzir certo.
+
+Para atualizar, confira em
+[geysermc.org/wiki/geyser/supported-versions](https://geysermc.org/wiki/geyser/supported-versions/)
+qual versão Java o Geyser emula na sua versão, e mova as duas junto.
 
 ---
 

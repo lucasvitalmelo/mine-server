@@ -2,18 +2,22 @@
 
 import { revalidatePath } from 'next/cache';
 import { rcon } from '../lib/rcon';
-
-/** Nick do Minecraft: 3-16 caracteres, letras, números e underscore. */
-const NICK = /^[A-Za-z0-9_]{3,16}$/;
+import {
+  validarNick,
+  comandoWhitelist,
+  comandoKick,
+  type NickValidado,
+} from '../lib/nick';
 
 export type Resultado = { ok: boolean; msg: string };
 
-function nick(formData: FormData, campo = 'nick'): string {
-  const valor = String(formData.get(campo) ?? '').trim();
-  if (!NICK.test(valor)) {
-    throw new Error(`"${valor}" não é um nick válido (3-16 letras, números ou _).`);
-  }
-  return valor;
+/**
+ * A gramatica do nick e a escolha do comando vivem em `lib/nick.ts`, porque
+ * um servidor com Geyser tem duas edicoes e as regras divergem entre
+ * `fwhitelist` e `kick`. Aqui so extraimos do formulario.
+ */
+function nick(formData: FormData, campo = 'nick'): NickValidado {
+  return validarNick(String(formData.get(campo) ?? ''));
 }
 
 function falha(err: unknown): Resultado {
@@ -25,9 +29,10 @@ function falha(err: unknown): Resultado {
 export async function addWhitelist(_prev: Resultado | null, formData: FormData): Promise<Resultado> {
   try {
     const n = nick(formData);
-    await rcon(`whitelist add ${n}`);
+    await rcon(comandoWhitelist(n, 'add'));
     revalidatePath('/');
-    return { ok: true, msg: `${n} liberado.` };
+    const via = n.edicao === 'bedrock' ? ' (Bedrock)' : '';
+    return { ok: true, msg: `${n.completo} liberado${via}.` };
   } catch (err) {
     return falha(err);
   }
@@ -59,7 +64,7 @@ export async function runCommand(_prev: Resultado | null, formData: FormData): P
 /* ---- ações sem retorno: a tela reflete o efeito sozinha -------------- */
 
 export async function removeWhitelist(formData: FormData) {
-  await rcon(`whitelist remove ${nick(formData)}`);
+  await rcon(comandoWhitelist(nick(formData), 'remove'));
   revalidatePath('/');
 }
 
@@ -70,7 +75,7 @@ export async function setWhitelist(formData: FormData) {
 }
 
 export async function kick(formData: FormData) {
-  await rcon(`kick ${nick(formData)} Removido pelo painel`);
+  await rcon(comandoKick(nick(formData), 'Removido pelo painel'));
   revalidatePath('/');
 }
 
