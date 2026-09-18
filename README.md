@@ -266,6 +266,32 @@ Para atualizar, confira em
 [geysermc.org/wiki/geyser/supported-versions](https://geysermc.org/wiki/geyser/supported-versions/)
 qual versão Java o Geyser emula na sua versão, e mova as duas junto.
 
+### Dois plugins acessórios
+
+Além do Geyser e do Floodgate, que são obrigatórios, o servidor carrega mais
+dois pelo Modrinth. Os dois são marcados como opcionais no compose: se o
+Modrinth estiver fora, o servidor sobe sem eles em vez de não subir.
+
+**ViaVersion** deixa cliente Java mais novo entrar num servidor mais velho —
+é o que o Geyser já faz pelo Bedrock, só que para o Java. Na prática, quando
+o launcher de alguém pular para 26.3 e o servidor ainda estiver em 26.2, essa
+pessoa entra assim mesmo. Sem ele, todo mundo do Java teria que trocar o
+perfil no mesmo dia em que você sobe de versão.
+
+Ele não mexe no teto: o servidor continua sem poder passar da versão que o
+Geyser emula, senão o Bedrock cai. O ViaVersion resolve o lado dos clientes,
+não o do servidor.
+
+**Bedrock Skin Restorer** aplica a skin real do jogador de Bedrock no lado
+Java. O Floodgate sozinho converte a skin e sobe para o MineSkin, que roda em
+contas doadas pela comunidade — quando a fila enche, a skin demora ou não
+chega. Este plugin busca direto pela API global do Geyser.
+
+Uma ressalva: ele conserta o que os **outros** veem. Existe um defeito
+conhecido em que o jogador de Bedrock não enxerga a própria skin mesmo com
+todo o resto funcionando. Se a sua aparecer errada só para você, peça a
+alguém no Java para olhar antes de concluir que está quebrado.
+
 ---
 
 ## Operação

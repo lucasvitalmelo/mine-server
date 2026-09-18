@@ -50,6 +50,35 @@ services:
         https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot
         https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot
 
+      # Dois plugins acessórios, vindos do Modrinth (a imagem resolve sozinha
+      # a build certa para a VERSION acima):
+      #
+      #   viaversion            deixa cliente Java mais novo entrar num
+      #                         servidor mais velho. Sem ele, todo mundo do
+      #                         Java precisa trocar o perfil no launcher no
+      #                         mesmo dia em que você sobe de versão. É o que
+      #                         o Geyser já faz pelo Bedrock.
+      #
+      #   bedrock-skin-restorer aplica a skin real do jogador de Bedrock no
+      #                         lado Java. O Floodgate sozinho depende da fila
+      #                         do MineSkin, que atrasa e às vezes não chega.
+      #
+      # O `?` no fim marca cada um como OPCIONAL: se o Modrinth estiver fora
+      # do ar ou o slug mudar, o servidor sobe assim mesmo. Nenhum dos dois
+      # vale trocar um servidor funcionando por um que não inicia — ao
+      # contrário do Geyser e do Floodgate, que são obrigatórios e por isso
+      # ficam no PLUGINS acima.
+      MODRINTH_PROJECTS: |
+        viaversion?
+        bedrock-skin-restorer?
+
+      # NÃO ligue isto. Com TRUE, a imagem escolhe a VERSION a partir da maior
+      # versão que os plugins do Modrinth suportam — e o bedrock-skin-restorer
+      # já suporta 26.3. O servidor pularia na frente do que o Geyser emula e
+      # o Bedrock pararia de conectar, que é exatamente o que a VERSION fixa
+      # existe para impedir.
+      VERSION_FROM_MODRINTH_PROJECTS: "FALSE"
+
       # --- Memória -------------------------------------------------------
       # MC_MAX_MEMORY deve ficar em ~75% de MC_MEM_LIMIT. Metaspace, buffers
       # do Netty, threads e overhead de GC vivem FORA do heap e contam para o
