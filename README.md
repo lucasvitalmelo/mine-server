@@ -133,38 +133,40 @@ servidor espera.
 
 ### Java conecta, Bedrock não
 
-O comando acima é `-t` (TCP). Bedrock usa outro protocolo, então o diagnóstico
-muda — copiar o comando do Java para cá dá falso negativo e manda você caçar
-um container saudável:
+Comece pelo log, nunca pelo `ss`. O `ss` mente aqui: a porta 19132 aparece
+escutando pelo `docker-proxy` assim que o compose publica o mapeamento, mesmo
+com o Geyser fora do ar. Quem prova que o Geyser subiu é ele mesmo:
 
 ```bash
-sudo ss -ulnp | grep 19132
+docker logs $(docker ps -qf name=minecraft) 2>&1 | grep -iE 'geyser|floodgate' | tail -20
 ```
 
-Repare no `-u` (UDP) no lugar do `-t`.
+Procure a linha `Started Geyser on UDP port 19132`. Sem ela o plugin não
+carregou, e o resto do diagnóstico não faz sentido.
 
-- **Aparece algo escutando** → o Geyser subiu. O bloqueio está em outro
-  lugar: a regra de UDP no firewall do painel do provedor, ou o `auth-type`
-  do Geyser não está `floodgate`.
-- **Não aparece nada** → o Geyser não carregou. Veja o log do plugin:
+Com o Geyser de pé, teste se o pacote chega de fora. O Geyser tem comando
+próprio pra isso:
 
 ```bash
-docker logs $(docker ps -qf name=minecraft) 2>&1 | grep -i geyser
+IP=$(curl -s ifconfig.me) && docker exec $(docker ps -qf name=minecraft) rcon-cli geyser connectiontest $IP 19132
 ```
 
-Para conferir o `auth-type`:
+- **Não alcança** → firewall, ou a porta. Se não houver grupo de firewall no
+  painel do provedor, nada está bloqueando e a suspeita vira a porta em si:
+  há um defeito conhecido do lado da Microsoft em que clientes externos
+  falham com `InitialConnection` nas portas padrão do Bedrock (19132, 19133,
+  19155) e conectam normalmente em portas alternativas. Troque
+  `MC_BEDROCK_PORT` para algo como `8420` e reconecte em `IP:8420`.
+- **Alcança, mas o jogo não entra** → é o `auth-type`:
 
 ```bash
-docker exec $(docker ps -qf name=minecraft) grep '^auth-type' /data/plugins/Geyser-Spigot/config.yml
+docker exec $(docker ps -qf name=minecraft) grep -n 'auth-type:' /data/plugins/Geyser-Spigot/config.yml
 ```
 
-Se o servidor aparece na lista do Bedrock mas a conexão morre na hora de
-autenticar, é isto: precisa ser `floodgate`, não `online`.
-
-O `auth-type` do Geyser e o `replace-spaces` do Floodgate vivem dentro do
-volume `minecraft-data` e voltam ao padrão de fábrica se o volume for
-recriado. Repita o bloco de configuração obrigatória da seção "Bedrock no
-mesmo servidor", mais abaixo.
+Tem que sair `  auth-type: floodgate`, **com os dois espaços de indentação**.
+Se sair `online`, refaça o bloco de configuração obrigatória da seção
+"Bedrock no mesmo servidor". Os dois ajustes vivem dentro do volume
+`minecraft-data` e voltam ao padrão de fábrica se o volume for recriado.
 
 ### Domínio no lugar do IP (opcional)
 
@@ -206,8 +208,8 @@ Rode uma vez, depois que o primeiro deploy terminar de subir, e de novo
 sempre que o volume `minecraft-data` for recriado:
 
 ```bash
-docker exec $(docker ps -qf name=minecraft) sed -i 's/^auth-type: .*/auth-type: floodgate/' /data/plugins/Geyser-Spigot/config.yml
-docker exec $(docker ps -qf name=minecraft) sed -i 's/^replace-spaces: .*/replace-spaces: true/' /data/plugins/floodgate/config.yml
+docker exec $(docker ps -qf name=minecraft) sed -i 's/^\( *\)auth-type: .*/\1auth-type: floodgate/' /data/plugins/Geyser-Spigot/config.yml
+docker exec $(docker ps -qf name=minecraft) sed -i 's/^\( *\)replace-spaces: .*/\1replace-spaces: true/' /data/plugins/floodgate/config.yml
 docker restart $(docker ps -qf name=minecraft)
 ```
 
@@ -263,6 +265,32 @@ continua conectando, o Geyser é que para de traduzir certo.
 Para atualizar, confira em
 [geysermc.org/wiki/geyser/supported-versions](https://geysermc.org/wiki/geyser/supported-versions/)
 qual versão Java o Geyser emula na sua versão, e mova as duas junto.
+
+### Dois plugins acessórios
+
+Além do Geyser e do Floodgate, que são obrigatórios, o servidor carrega mais
+dois pelo Modrinth. Os dois são marcados como opcionais no compose: se o
+Modrinth estiver fora, o servidor sobe sem eles em vez de não subir.
+
+**ViaVersion** deixa cliente Java mais novo entrar num servidor mais velho —
+é o que o Geyser já faz pelo Bedrock, só que para o Java. Na prática, quando
+o launcher de alguém pular para 26.3 e o servidor ainda estiver em 26.2, essa
+pessoa entra assim mesmo. Sem ele, todo mundo do Java teria que trocar o
+perfil no mesmo dia em que você sobe de versão.
+
+Ele não mexe no teto: o servidor continua sem poder passar da versão que o
+Geyser emula, senão o Bedrock cai. O ViaVersion resolve o lado dos clientes,
+não o do servidor.
+
+**Bedrock Skin Restorer** aplica a skin real do jogador de Bedrock no lado
+Java. O Floodgate sozinho converte a skin e sobe para o MineSkin, que roda em
+contas doadas pela comunidade — quando a fila enche, a skin demora ou não
+chega. Este plugin busca direto pela API global do Geyser.
+
+Uma ressalva: ele conserta o que os **outros** veem. Existe um defeito
+conhecido em que o jogador de Bedrock não enxerga a própria skin mesmo com
+todo o resto funcionando. Se a sua aparecer errada só para você, peça a
+alguém no Java para olhar antes de concluir que está quebrado.
 
 ---
 
