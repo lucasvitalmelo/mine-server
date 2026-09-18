@@ -761,7 +761,7 @@ Se não aparecer nada, confira o que baixou: `docker exec $(docker ps -qf name=m
 - [ ] **Step 3: Ver o valor errado antes de corrigir**
 
 ```bash
-docker exec $(docker ps -qf name=minecraft) grep -n '^auth-type' /data/plugins/Geyser-Spigot/config.yml
+docker exec $(docker ps -qf name=minecraft) grep -n 'auth-type:' /data/plugins/Geyser-Spigot/config.yml
 ```
 
 Expected: `auth-type: online` — o default, e o estado que quebra o Bedrock.
@@ -771,7 +771,7 @@ Se o comando disser que o arquivo não existe, o servidor ainda não terminou de
 - [ ] **Step 4: Trocar para floodgate**
 
 ```bash
-docker exec $(docker ps -qf name=minecraft) sed -i 's/^auth-type: .*/auth-type: floodgate/' /data/plugins/Geyser-Spigot/config.yml
+docker exec $(docker ps -qf name=minecraft) sed -i 's/^\( *\)auth-type: .*/\1auth-type: floodgate/' /data/plugins/Geyser-Spigot/config.yml
 ```
 
 - [ ] **Step 4b: Ligar o `replace-spaces` do Floodgate**
@@ -789,7 +789,7 @@ Expected: `replace-spaces: false` — o default.
 Troque:
 
 ```bash
-docker exec $(docker ps -qf name=minecraft) sed -i 's/^replace-spaces: .*/replace-spaces: true/' /data/plugins/floodgate/config.yml
+docker exec $(docker ps -qf name=minecraft) sed -i 's/^\( *\)replace-spaces: .*/\1replace-spaces: true/' /data/plugins/floodgate/config.yml
 ```
 
 Se o `grep` não achar o arquivo, confirme o nome da pasta com `docker exec $(docker ps -qf name=minecraft) ls /data/plugins` — dependendo da build, o Floodgate cria `floodgate/` ou `Floodgate/`.
@@ -797,7 +797,7 @@ Se o `grep` não achar o arquivo, confirme o nome da pasta com `docker exec $(do
 - [ ] **Step 5: Confirmar as duas trocas, e só então reiniciar**
 
 ```bash
-docker exec $(docker ps -qf name=minecraft) grep -n '^auth-type' /data/plugins/Geyser-Spigot/config.yml
+docker exec $(docker ps -qf name=minecraft) grep -n 'auth-type:' /data/plugins/Geyser-Spigot/config.yml
 docker exec $(docker ps -qf name=minecraft) grep -n 'replace-spaces' /data/plugins/floodgate/config.yml
 ```
 
@@ -812,13 +812,18 @@ docker restart $(docker ps -qf name=minecraft)
 - [ ] **Step 6: Confirmar que o Geyser subiu escutando UDP**
 
 ```bash
-docker logs $(docker ps -qf name=minecraft) 2>&1 | grep -i 'geyser'
-sudo ss -ulnp | grep 19132
+docker logs $(docker ps -qf name=minecraft) 2>&1 | grep -iE 'geyser|floodgate' | tail -20
 ```
 
-Expected: o log confirma o Geyser iniciado, e o `ss` mostra algo escutando em 19132.
+Expected: a linha `Started Geyser on UDP port 19132`. É ela que prova que o plugin subiu.
 
-Repare no `-u`: **`ss -ulnp` é UDP**, diferente do `ss -tlnp` que o README:109 usa para o Java. Copiar o comando de TCP aqui dá falso negativo e manda você caçar um container saudável.
+**Não use `ss -ulnp | grep 19132` para isso.** A versão original deste passo usava, e está errada: o `docker-proxy` passa a escutar na porta assim que o compose publica o mapeamento, mesmo com o Geyser fora do ar. O `ss` devolve falso positivo e o diagnóstico morre ali.
+
+Para testar alcance de fora, o Geyser tem comando próprio:
+
+```bash
+IP=$(curl -s ifconfig.me) && docker exec $(docker ps -qf name=minecraft) rcon-cli geyser connectiontest $IP 19132
+```
 
 - [ ] **Step 7: Liberar a porta no firewall do provedor**
 
@@ -877,7 +882,7 @@ sudo ss -ulnp | grep 19132
   Confira o segundo com:
 
 ```bash
-docker exec $(docker ps -qf name=minecraft) grep '^auth-type' /data/plugins/Geyser-Spigot/config.yml
+docker exec $(docker ps -qf name=minecraft) grep 'auth-type:' /data/plugins/Geyser-Spigot/config.yml
 ```
 
 - **Não aparece nada** → o Geyser não carregou. Veja
@@ -888,7 +893,7 @@ Se o servidor aparece na lista mas a conexão morre na autenticação, é o
 recriado — nesse caso, reaplique:
 
 ```bash
-docker exec $(docker ps -qf name=minecraft) sed -i 's/^auth-type: .*/auth-type: floodgate/' /data/plugins/Geyser-Spigot/config.yml
+docker exec $(docker ps -qf name=minecraft) sed -i 's/^\( *\)auth-type: .*/\1auth-type: floodgate/' /data/plugins/Geyser-Spigot/config.yml
 docker restart $(docker ps -qf name=minecraft)
 ```
 ````
